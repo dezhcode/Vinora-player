@@ -1,0 +1,6 @@
+{
+  "name": "Plinth",
+  "description": "Industrial minimalist vinyl turntable music player with curved disc exploration, realistic 33⅓ RPM physics, mechanical tonearm kinematics, live FFT audio visualizer, offline library, playlists, and hardware equalizer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

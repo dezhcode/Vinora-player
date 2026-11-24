@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Subtle platter shadow -->
+    <path
+        android:fillColor="#22101522"
+        android:pathData="M51,56m-27,0a27,27 0,1 1,54 0a27,27 0,1 1,-54 0" />
+
+    <!-- Machined silver platter rim -->
+    <path
+        android:fillColor="#CFD6E4"
+        android:pathData="M50,54m-26.5,0a26.5,26.5 0,1 1,53 0a26.5,26.5 0,1 1,-53 0" />
+
+    <!-- Deep obsidian vinyl record -->
+    <path
+        android:fillColor="#111318"
+        android:pathData="M50,54m-25,0a25,25 0,1 1,50 0a25,25 0,1 1,-50 0" />
+
+    <!-- Subtle groove highlights -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M50,54m-20.5,0a20.5,20.5 0,1 1,41 0a20.5,20.5 0,1 1,-41 0"
+        android:strokeWidth="0.9"
+        android:strokeColor="#2A2F3B" />
+
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M50,54m-15.5,0a15.5,15.5 0,1 1,31 0a15.5,15.5 0,1 1,-31 0"
+        android:strokeWidth="0.9"
+        android:strokeColor="#252A36" />
+
+    <!-- Diagonal anisotropic vinyl sheen -->
+    <path
+        android:fillColor="#1FFFFFFF"
+        android:pathData="M50,54 L31,38 A24,24 0,0 1,44 30 Z" />
+    <path
+        android:fillColor="#1FFFFFFF"
+        android:pathData="M50,54 L69,70 A24,24 0,0 1,56 78 Z" />
+
+    <!-- Center cream-silver record label -->
+    <path
+        android:fillColor="#F4F6FA"
+        android:pathData="M50,54m-9.2,0a9.2,9.2 0,1 1,18.4 0a9.2,9.2 0,1 1,-18.4 0" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M50,54m-7.2,0a7.2,7.2 0,1 1,14.4 0a7.2,7.2 0,1 1,-14.4 0"
+        android:strokeWidth="0.6"
+        android:strokeColor="#D0D7E4" />
+
+    <!-- Chrome spindle -->
+    <path
+        android:fillColor="#1A1D24"
+        android:pathData="M50,54m-2.1,0a2.1,2.1 0,1 1,4.2 0a2.1,2.1 0,1 1,-4.2 0" />
+
+    <!-- Tonearm gimbal base -->
+    <path
+        android:fillColor="#BFC8D8"
+        android:pathData="M78,34m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+    <path
+        android:fillColor="#F0F3F8"
+        android:pathData="M78,34m-4.2,0a4.2,4.2 0,1 1,8.4 0a4.2,4.2 0,1 1,-8.4 0" />
+    <path
+        android:fillColor="#222630"
+        android:pathData="M78,34m-1.8,0a1.8,1.8 0,1 1,3.6 0a1.8,1.8 0,1 1,-3.6 0" />
+
+    <!-- Mechanical tonearm tube -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M78,34 L77,60 L71.5,67.5"
+        android:strokeWidth="2.4"
+        android:strokeColor="#1B1F28"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <!-- Cartridge headshell -->
+    <path
+        android:fillColor="#2B303D"
+        android:pathData="M73.5,65.2 L70.2,69.8 L67.6,67.9 L70.9,63.3 Z" />
+
+    <!-- Recessed metallic start button bottom-right -->
+    <path
+        android:fillColor="#C5CEE0"
+        android:pathData="M78,76m-3.6,0a3.6,3.6 0,1 1,7.2 0a3.6,3.6 0,1 1,-7.2 0" />
+    <path
+        android:fillColor="#F4F6FA"
+        android:pathData="M78,76m-2.7,0a2.7,2.7 0,1 1,5.4 0a2.7,2.7 0,1 1,-5.4 0" />
+</vector>

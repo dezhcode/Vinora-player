@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Plinth</string>
+    <string name="notification_channel_playback">Audio Playback</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_menu">More options</string>
+    <string name="cd_play">Play</string>
+    <string name="cd_pause">Pause</string>
+    <string name="cd_previous">Previous track</string>
+    <string name="cd_next">Next track</string>
+    <string name="cd_shuffle">Shuffle</string>
+    <string name="cd_repeat">Repeat</string>
+    <string name="cd_favorite">Favorite</string>
+    <string name="cd_queue">Queue</string>
+    <string name="cd_volume">Volume</string>
+    <string name="cd_turntable">Vinyl turntable platter</string>
+    <string name="cd_album_art">Album cover artwork</string>
+</resources>
