@@ -115,63 +115,63 @@ fun TactileRoundButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.94f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
-        label = "roundBtnScale",
+    val pressTravelDp by animateDpAsState(
+        targetValue = if (pressed) 3.5.dp else 0.dp,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
+        label = "roundBtnTravel",
+    )
+    val tiltDeg by animateFloatAsState(
+        targetValue = if (pressed) -5.5f else 0f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
+        label = "roundBtnTilt",
     )
     val shadowElev by animateDpAsState(
-        targetValue = if (pressed) 2.dp else 9.dp,
+        targetValue = if (pressed) 1.5.dp else 10.dp,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "roundBtnElev",
     )
 
-    val fillBrush = if (pressed) {
-        Brush.linearGradient(
-            colors = listOf(palette.buttonPressedTop, palette.buttonPressedBottom),
-            start = Offset.Zero,
-            end = Offset(200f, 200f),
+    val capBrush = if (pressed) {
+        Brush.radialGradient(
+            colors = listOf(palette.buttonPressedBottom, palette.buttonPressedTop),
+            center = Offset(90f, 90f),
+            radius = 220f,
         )
     } else {
         Brush.linearGradient(
             colors = listOf(palette.buttonTop, palette.buttonBottom),
             start = Offset.Zero,
-            end = Offset(200f, 200f),
+            end = Offset(180f, 220f),
         )
     }
 
-    val outerRim = if (active) palette.inkPrimary.copy(alpha = 0.25f) else palette.hairline
+    val bezelRimBrush = Brush.linearGradient(
+        colors = listOf(
+            palette.plinthEdgeShadow.copy(alpha = 0.85f),
+            palette.plinthEdgeLight.copy(alpha = 0.95f),
+        ),
+        start = Offset.Zero,
+        end = Offset(180f, 200f),
+    )
 
+    val skirtBrush = Brush.verticalGradient(
+        colors = listOf(
+            palette.plinthEdgeLight.copy(alpha = 0.65f),
+            palette.plinthEdgeShadow.copy(alpha = 0.95f),
+        ),
+    )
+
+    // Outer recessed chassis well
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
             .size(size)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .plinthSoftShadow(
-                cornerRadius = size / 2,
-                shadowDark = palette.shadowDark,
-                shadowLight = palette.shadowLight,
-                elevation = shadowElev,
-                darkAlpha = if (palette.isDark) 0.72f else 0.48f,
-                lightAlpha = if (palette.isDark) 0.22f else 0.92f,
-            )
             .clip(CircleShape)
-            .background(fillBrush)
-            .border(1.dp, outerRim, CircleShape)
-            .padding(3.dp)
-            .border(
-                width = 0.8.dp,
-                brush = Brush.linearGradient(
-                    listOf(
-                        palette.plinthEdgeLight.copy(alpha = if (pressed) 0.25f else 0.9f),
-                        palette.plinthEdgeShadow.copy(alpha = 0.55f),
-                    )
-                ),
-                shape = CircleShape,
-            )
+            .background(bezelRimBrush)
+            .padding(2.5.dp)
+            .clip(CircleShape)
+            .background(palette.plinthEdgeShadow.copy(alpha = if (palette.isDark) 0.72f else 0.32f))
+            .padding(2.dp)
             .semantics { this.contentDescription = contentDescription }
             .clickable(
                 interactionSource = interactionSource,
@@ -181,8 +181,43 @@ fun TactileRoundButton(
                 if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             },
-        content = content,
-    )
+    ) {
+        // 3D Extruded Physical Keycap Skirt + Ceramic/Metallic Top Face
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationY = pressTravelDp.toPx()
+                    rotationX = tiltDeg
+                    cameraDistance = 12f * density
+                }
+                .plinthSoftShadow(
+                    cornerRadius = size / 2,
+                    shadowDark = palette.shadowDark,
+                    shadowLight = palette.shadowLight,
+                    elevation = shadowElev,
+                    darkAlpha = if (palette.isDark) 0.82f else 0.56f,
+                    lightAlpha = if (palette.isDark) 0.16f else 0.78f,
+                )
+                .clip(CircleShape)
+                .background(skirtBrush)
+                .padding(bottom = if (pressed) 1.dp else 3.8.dp, top = 1.dp, start = 1.dp, end = 1.dp)
+                .clip(CircleShape)
+                .background(capBrush)
+                .border(
+                    width = 1.dp,
+                    brush = Brush.linearGradient(
+                        listOf(
+                            palette.plinthEdgeLight.copy(alpha = if (pressed) 0.3f else 0.95f),
+                            if (active) palette.inkPrimary.copy(alpha = 0.25f) else palette.plinthEdgeShadow.copy(alpha = 0.45f),
+                        )
+                    ),
+                    shape = CircleShape,
+                ),
+            content = content,
+        )
+    }
 }
 
 @Composable
@@ -200,55 +235,48 @@ fun TactileCapsuleButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.95f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessHigh),
-        label = "capsuleScale",
+    val pressTravelDp by animateDpAsState(
+        targetValue = if (pressed) 2.8.dp else 0.dp,
+        animationSpec = spring(dampingRatio = 0.58f, stiffness = Spring.StiffnessMediumLow),
+        label = "capsuleTravel",
+    )
+    val tiltDeg by animateFloatAsState(
+        targetValue = if (pressed) -4.2f else 0f,
+        animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMedium),
+        label = "capsuleTilt",
     )
     val shadowElev by animateDpAsState(
-        targetValue = if (pressed) 2.dp else 7.dp,
+        targetValue = if (pressed) 1.5.dp else 7.dp,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "capsuleElev",
     )
 
-    val shape = RoundedCornerShape(cornerRadius)
+    val outerShape = RoundedCornerShape(cornerRadius)
+    val innerShape = RoundedCornerShape((cornerRadius - 2.dp).coerceAtLeast(6.dp))
+
     val fillBrush = if (pressed) {
         Brush.verticalGradient(listOf(palette.buttonPressedTop, palette.buttonPressedBottom))
     } else if (active) {
-        Brush.verticalGradient(listOf(palette.inkPrimary.copy(alpha = 0.12f), palette.buttonBottom))
+        Brush.verticalGradient(listOf(palette.inkPrimary.copy(alpha = 0.13f), palette.buttonBottom))
     } else {
         Brush.verticalGradient(listOf(palette.buttonTop, palette.buttonBottom))
     }
 
+    val skirtBrush = Brush.verticalGradient(
+        listOf(
+            palette.plinthEdgeLight.copy(alpha = 0.6f),
+            palette.plinthEdgeShadow.copy(alpha = 0.9f),
+        ),
+    )
+
+    // Recessed chassis bezel housing
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .plinthSoftShadow(
-                cornerRadius = cornerRadius,
-                shadowDark = palette.shadowDark,
-                shadowLight = palette.shadowLight,
-                elevation = shadowElev,
-                darkAlpha = if (palette.isDark) 0.65f else 0.42f,
-                lightAlpha = if (palette.isDark) 0.18f else 0.9f,
-            )
-            .clip(shape)
-            .background(fillBrush)
-            .border(1.dp, palette.hairline, shape)
-            .padding(2.5.dp)
-            .border(
-                width = 0.75.dp,
-                brush = Brush.verticalGradient(
-                    listOf(
-                        palette.plinthEdgeLight.copy(alpha = if (pressed) 0.2f else 0.85f),
-                        palette.plinthEdgeShadow.copy(alpha = 0.45f),
-                    )
-                ),
-                shape = RoundedCornerShape((cornerRadius - 2.dp).coerceAtLeast(4.dp)),
-            )
+            .clip(outerShape)
+            .background(palette.plinthEdgeShadow.copy(alpha = if (palette.isDark) 0.55f else 0.24f))
+            .border(0.8.dp, palette.hairline, outerShape)
+            .padding(2.dp)
             .semantics { this.contentDescription = contentDescription }
             .clickable(
                 interactionSource = interactionSource,
@@ -258,8 +286,43 @@ fun TactileCapsuleButton(
                 if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                 onClick()
             },
-        content = content,
-    )
+    ) {
+        // 3D Physical Keycap Skirt + Machined Face
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    translationY = pressTravelDp.toPx()
+                    rotationX = tiltDeg
+                    cameraDistance = 12f * density
+                }
+                .plinthSoftShadow(
+                    cornerRadius = cornerRadius,
+                    shadowDark = palette.shadowDark,
+                    shadowLight = palette.shadowLight,
+                    elevation = shadowElev,
+                    darkAlpha = if (palette.isDark) 0.72f else 0.45f,
+                    lightAlpha = if (palette.isDark) 0.14f else 0.8f,
+                )
+                .clip(innerShape)
+                .background(skirtBrush)
+                .padding(bottom = if (pressed) 0.8.dp else 2.8.dp, top = 0.8.dp, start = 0.8.dp, end = 0.8.dp)
+                .clip(innerShape)
+                .background(fillBrush)
+                .border(
+                    width = 0.8.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            palette.plinthEdgeLight.copy(alpha = if (pressed) 0.2f else 0.9f),
+                            palette.plinthEdgeShadow.copy(alpha = 0.35f),
+                        )
+                    ),
+                    shape = innerShape,
+                ),
+            content = content,
+        )
+    }
 }
 
 /**

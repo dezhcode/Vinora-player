@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -123,12 +124,12 @@ fun NowPlayingScreen(
                 Brush.verticalGradient(listOf(palette.canvasTop, palette.canvasBottom))
             ),
     ) {
-        // Architectural Lower Convex Dome Backdrop (signature reference detail!)
+        // Architectural Lower Convex Dome Backdrop positioned smoothly under the title band
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            val domeStartY = h * 0.685f
-            val domePeakY = h * 0.615f
+            val domeStartY = h * 0.635f
+            val domePeakY = h * 0.575f
 
             val domePath = Path().apply {
                 moveTo(0f, domeStartY)
@@ -158,8 +159,7 @@ fun NowPlayingScreen(
             )
         }
 
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
@@ -167,6 +167,12 @@ fun NowPlayingScreen(
                 .widthIn(max = 560.dp)
                 .align(Alignment.TopCenter),
         ) {
+            val deckHeight = (maxHeight * 0.425f).coerceIn(220.dp, 360.dp)
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxSize(),
+            ) {
             // Minimal Top Navigation Bar ("<" back + optional timer pill + "..." menu)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -255,28 +261,34 @@ fun NowPlayingScreen(
                 }
             }
 
-            // Hero Top-Down Luxury Turntable Deck
-            TurntableDeck(
-                artworkUri = track.artworkUri,
-                isPlaying = isPlaying,
-                progressFraction = progressFraction,
-                volume = volume,
-                trackChangeNonce = trackChangeNonce,
-                trackChangeDirection = trackChangeDirection,
-                hapticsEnabled = hapticsEnabled,
-                reducedMotion = reducedMotion,
-                onTogglePlayPause = onTogglePlayPause,
-                onScrubDeltaMs = onScrubDeltaMs,
-                onVolumeChange = onVolumeChange,
+            // Hero 3D Three.js Turntable Deck (explicitly bounded height so it never crowds or overlaps text)
+            Box(
+                contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .weight(1f, fill = false),
-            )
+                    .height(deckHeight)
+                    .padding(horizontal = 12.dp),
+            ) {
+                TurntableDeck(
+                    artworkUri = track.artworkUri,
+                    isPlaying = isPlaying,
+                    progressFraction = progressFraction,
+                    volume = volume,
+                    trackChangeNonce = trackChangeNonce,
+                    trackChangeDirection = trackChangeDirection,
+                    hapticsEnabled = hapticsEnabled,
+                    reducedMotion = reducedMotion,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onScrubDeltaMs = onScrubDeltaMs,
+                    onVolumeChange = onVolumeChange,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            // Equal balanced weight above & below Title/Artist centers it cleanly between Turntable and Visualizer
+            Spacer(modifier = Modifier.weight(1f))
 
-            // Track Title & Artist (Centered, generous minimalist hierarchy)
+            // Track Title & Artist — Dead-center midway between Turntable and Equalizer Bay
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
@@ -287,7 +299,8 @@ fun NowPlayingScreen(
                     text = track.title,
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 21.sp,
+                        fontSize = 22.sp,
+                        letterSpacing = (-0.3).sp,
                     ),
                     color = palette.inkPrimary,
                     textAlign = TextAlign.Center,
@@ -298,7 +311,10 @@ fun NowPlayingScreen(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = track.artist,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    ),
                     color = palette.inkSecondary,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -307,15 +323,16 @@ fun NowPlayingScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.weight(0.55f))
+            Spacer(modifier = Modifier.weight(1f))
 
-            // Live FFT Audio Visualizer + Digital Timer + Interactive Scrub Bar
+            // Creative Acoustic Spectrum Visualizer + Digital Timer + Interactive Scrub Bar
             LiveAudioVisualizerSection(
                 spectrum = spectrum,
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
                 onSeekTo = onSeekTo,
+                onOpenEqualizer = onOpenEqualizer,
             )
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -358,23 +375,23 @@ fun NowPlayingScreen(
                 }
             }
 
-            // Primary Tactile Hardware Transport Row (Exact Reference Silhouette!)
+            // Primary 3D Physical Hardware Transport Row
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterHorizontally),
+                horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp),
             ) {
-                // Left Capsule: Previous Track
+                // Left Capsule Switch: Previous Track
                 TactileCapsuleButton(
                     onClick = onPrevious,
                     contentDescription = stringResource(R.string.cd_previous),
                     cornerRadius = 26.dp,
                     hapticsEnabled = hapticsEnabled,
                     modifier = Modifier
-                        .width(88.dp)
-                        .height(50.dp)
+                        .width(90.dp)
+                        .height(52.dp)
                         .testTag("btn_previous"),
                 ) {
                     MinimalSkipIcon(
@@ -388,18 +405,17 @@ fun NowPlayingScreen(
                 TactileRoundButton(
                     onClick = onTogglePlayPause,
                     contentDescription = if (isPlaying) stringResource(R.string.cd_pause) else stringResource(R.string.cd_play),
-                    size = 76.dp,
+                    size = 78.dp,
                     hapticsEnabled = hapticsEnabled,
                     active = isPlaying,
                     modifier = Modifier.testTag("btn_play_pause"),
                 ) {
-                    // Subtle Braun top notch indicator + Morphing Play/Pause center glyph
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Canvas(modifier = Modifier.fillMaxSize()) {
                             drawLine(
                                 color = if (isPlaying) palette.inkPrimary else palette.inkMuted,
-                                start = Offset(size.width / 2f, 9.dp.toPx()),
-                                end = Offset(size.width / 2f, 15.dp.toPx()),
+                                start = Offset(size.width / 2f, 8.dp.toPx()),
+                                end = Offset(size.width / 2f, 14.dp.toPx()),
                                 strokeWidth = 2.dp.toPx(),
                                 cap = androidx.compose.ui.graphics.StrokeCap.Round,
                             )
@@ -414,15 +430,15 @@ fun NowPlayingScreen(
                     }
                 }
 
-                // Right Capsule: Next Track
+                // Right Capsule Switch: Next Track
                 TactileCapsuleButton(
                     onClick = onNext,
                     contentDescription = stringResource(R.string.cd_next),
                     cornerRadius = 26.dp,
                     hapticsEnabled = hapticsEnabled,
                     modifier = Modifier
-                        .width(88.dp)
-                        .height(50.dp)
+                        .width(90.dp)
+                        .height(52.dp)
                         .testTag("btn_next"),
                 ) {
                     MinimalSkipIcon(
@@ -515,6 +531,7 @@ fun NowPlayingScreen(
             }
 
             Spacer(modifier = Modifier.height(6.dp))
+            }
         }
     }
 }
