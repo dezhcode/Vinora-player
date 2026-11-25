@@ -131,12 +131,12 @@ fun NowPlayingScreen(
                 Brush.verticalGradient(listOf(palette.canvasTop, palette.canvasBottom))
             ),
     ) {
-        // Architectural Lower Convex Dome Backdrop positioned smoothly under the title band
+        // Architectural Lower Convex Dome Backdrop positioned cleanly BELOW Title & Artist
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            val domeStartY = h * 0.635f
-            val domePeakY = h * 0.575f
+            val domeStartY = h * 0.715f
+            val domePeakY = h * 0.652f
 
             val domePath = Path().apply {
                 moveTo(0f, domeStartY)
@@ -174,19 +174,19 @@ fun NowPlayingScreen(
                 .widthIn(max = 560.dp)
                 .align(Alignment.TopCenter),
         ) {
-            val deckHeight = (maxHeight * 0.425f).coerceIn(220.dp, 360.dp)
+            val deckHeight = (maxHeight * 0.445f).coerceIn(220.dp, 360.dp)
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxSize(),
             ) {
-            // Minimal Top Navigation Bar ("<" back + optional timer pill + "..." menu)
+            // Minimal Top Navigation Bar ("<" back + optional sleep timer badge + "..." menu)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
             ) {
                 IconButton(
                     onClick = {
@@ -205,19 +205,18 @@ fun NowPlayingScreen(
                     )
                 }
 
-                // Subtle RPM / Sleep Timer status badge
-                Text(
-                    text = if (sleepTimerRemainingMs > 0L) {
-                        strings.timerRemaining(formatDuration(sleepTimerRemainingMs))
-                    } else {
-                        strings.rpmLabel
-                    },
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontFamily = DigitalMonoFontFamily,
-                        letterSpacing = 1.2.sp,
-                    ),
-                    color = palette.inkSecondary,
-                )
+                if (sleepTimerRemainingMs > 0L) {
+                    Text(
+                        text = strings.timerRemaining(formatDuration(sleepTimerRemainingMs)),
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontFamily = DigitalMonoFontFamily,
+                            letterSpacing = 1.0.sp,
+                        ),
+                        color = palette.inkSecondary,
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(48.dp))
+                }
 
                 Box {
                     IconButton(
@@ -278,13 +277,13 @@ fun NowPlayingScreen(
                 }
             }
 
-            // Hero 3D Three.js Turntable Deck (explicitly bounded height so it never crowds or overlaps text)
+            // Top-Down Industrial Turntable Deck
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(deckHeight)
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 20.dp),
             ) {
                 TurntableDeck(
                     artworkUri = track.artworkUri,
@@ -303,10 +302,9 @@ fun NowPlayingScreen(
                 )
             }
 
-            // Equal balanced weight above & below Title/Artist centers it cleanly between Turntable and Visualizer
-            Spacer(modifier = Modifier.weight(1f))
+            // Airy gap placing Track Title & Artist squarely between Turntable bottom and Convex Dome peak
+            Spacer(modifier = Modifier.weight(0.55f))
 
-            // Track Title & Artist — Dead-center midway between Turntable and Equalizer Bay
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
@@ -317,7 +315,7 @@ fun NowPlayingScreen(
                     text = track.title,
                     style = MaterialTheme.typography.headlineSmall.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
+                        fontSize = 21.sp,
                         letterSpacing = (-0.3).sp,
                     ),
                     color = palette.inkPrimary,
@@ -326,11 +324,11 @@ fun NowPlayingScreen(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.testTag("now_playing_title"),
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = track.artist,
                     style = MaterialTheme.typography.bodyMedium.copy(
-                        fontSize = 14.sp,
+                        fontSize = 13.5.sp,
                         fontWeight = FontWeight.Medium,
                     ),
                     color = palette.inkSecondary,
@@ -341,9 +339,9 @@ fun NowPlayingScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.weight(0.85f))
 
-            // Creative Acoustic Spectrum Visualizer + Digital Timer + Interactive Scrub Bar
+            // Floating Waveform + Digital Timer + Precision Scrub Rail inside Dome
             LiveAudioVisualizerSection(
                 spectrumFlow = spectrumFlow,
                 isPlaying = isPlaying,
@@ -353,7 +351,7 @@ fun NowPlayingScreen(
                 onOpenEqualizer = onOpenEqualizer,
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Optional collapsible tactile hardware volume slider
             AnimatedVisibility(
