@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.ComponentName
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Bundle
 import androidx.compose.runtime.Immutable
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -12,6 +13,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.example.audio.AudioEqualizerController
 import com.example.audio.EqualizerState
@@ -21,6 +23,8 @@ import com.example.audio.SpectrumBus
 import com.example.audio.SpectrumSnapshot
 import com.example.data.AlbumGroup
 import com.example.data.ArtistGroup
+import com.example.data.CustomEqPreset
+import com.example.data.FolderGroup
 import com.example.data.GraphicsQuality
 import com.example.data.MusicDatabase
 import com.example.data.MusicRepository
@@ -59,6 +63,7 @@ data class PlayerUiState(
     val recentTracks: List<Track> = emptyList(),
     val albums: List<AlbumGroup> = emptyList(),
     val artists: List<ArtistGroup> = emptyList(),
+    val folders: List<FolderGroup> = emptyList(),
     val preferences: UserPreferences = UserPreferences(),
     val sleepTimerRemainingMs: Long = 0L,
     val isScanningDevice: Boolean = false,
@@ -158,6 +163,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 tracks = items,
             )
         }.sortedBy { it.name }
+        val folders = lib.tracks.groupBy { it.folderPath }.map { (path, items) ->
+            FolderGroup(
+                name = items.firstOrNull()?.folderName ?: path,
+                path = path,
+                artworkUri = items.firstOrNull { it.artworkUri != null }?.artworkUri,
+                tracks = items,
+            )
+        }.sortedBy { it.name.lowercase() }
 
         PlayerUiState(
             tracks = lib.tracks,
@@ -173,6 +186,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             recentTracks = recent,
             albums = albums,
             artists = artists,
+            folders = folders,
             preferences = lib.prefs,
             sleepTimerRemainingMs = aux.sleepTimerMs,
             isScanningDevice = aux.scanning,
@@ -213,6 +227,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 enabled = prefs.eqEnabled,
                 presetIndex = prefs.eqPresetIndex,
                 bandLevelsDb = prefs.eqBands,
+                activeCustomPresetId = prefs.eqCustomPresetId,
             )
             // Attempt passive MediaStore scan if permission already granted
             repository.scanDeviceLibrary()
@@ -303,6 +318,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             val prefs = repository.preferences.preferencesFlow.first()
             controller.shuffleModeEnabled = prefs.shuffleEnabled
             controller.repeatMode = prefs.repeatMode.toMedia3RepeatMode()
+            sendCrossfadeCommand(controller, prefs.crossfadeEnabled)
+        }
+    }
+
+    private fun sendCrossfadeCommand(controller: MediaController, enabled: Boolean) {
+        runCatching {
+            val args = Bundle().apply { putBoolean(PlaybackService.ARG_ENABLED, enabled) }
+            controller.sendCustomCommand(
+                SessionCommand(PlaybackService.CMD_SET_CROSSFADE, Bundle.EMPTY),
+                args,
+            )
         }
     }
 
@@ -520,6 +546,67 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         if (newIdx >= 0) _currentIndex.value = newIdx
     }
 
+    fun playNext(track: Track, feedbackMessage: String? = null) {
+        val currentQueue = _queue.value
+        val currentId = _currentTrack.value?.id
+        if (currentQueue.isEmpty() || currentId == null) {
+            playTrack(track, listOf(track))
+            feedbackMessage?.let(::showStatus)
+            return
+        }
+        val result = QueueOperations.playNext(currentQueue, currentId, track)
+        _queue.value = result.queue
+        if (result.currentIndex >= 0) _currentIndex.value = result.currentIndex
+        applyMediaQueueAction(result.mediaControllerAction)
+        feedbackMessage?.let(::showStatus)
+    }
+
+    fun addToQueue(track: Track, feedbackMessage: String? = null) {
+        val currentQueue = _queue.value
+        val currentId = _currentTrack.value?.id
+        if (currentQueue.isEmpty() || currentId == null) {
+            playTrack(track, listOf(track))
+            feedbackMessage?.let(::showStatus)
+            return
+        }
+        val result = QueueOperations.addToQueue(currentQueue, currentId, track)
+        _queue.value = result.queue
+        if (result.currentIndex >= 0) _currentIndex.value = result.currentIndex
+        applyMediaQueueAction(result.mediaControllerAction)
+        feedbackMessage?.let(::showStatus)
+    }
+
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        val currentQueue = _queue.value
+        val currentId = _currentTrack.value?.id
+        val result = QueueOperations.moveQueueItem(currentQueue, currentId, fromIndex, toIndex) ?: return
+        _queue.value = result.queue
+        if (result.currentIndex >= 0) _currentIndex.value = result.currentIndex
+        applyMediaQueueAction(result.mediaControllerAction)
+    }
+
+    private fun applyMediaQueueAction(action: MediaQueueAction) {
+        val controller = mediaController ?: return
+        when (action) {
+            MediaQueueAction.None -> Unit
+            is MediaQueueAction.Move -> {
+                if (action.fromIndex in 0 until controller.mediaItemCount &&
+                    action.toIndex in 0 until controller.mediaItemCount &&
+                    action.fromIndex != action.toIndex
+                ) {
+                    controller.moveMediaItem(action.fromIndex, action.toIndex)
+                }
+            }
+            is MediaQueueAction.Insert -> {
+                val safeIdx = action.index.coerceIn(0, controller.mediaItemCount)
+                controller.addMediaItem(safeIdx, action.track.toMediaItem())
+            }
+            is MediaQueueAction.Append -> {
+                controller.addMediaItem(action.track.toMediaItem())
+            }
+        }
+    }
+
     fun scanDeviceMusic(foundFormatter: (Int) -> String) {
         viewModelScope.launch {
             _isScanning.value = true
@@ -563,17 +650,32 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setEqualizerEnabled(enabled: Boolean) {
         val current = equalizerState.value
-        AudioEqualizerController.applySettings(enabled, current.presetIndex, current.bandLevelsDb)
+        AudioEqualizerController.applySettings(
+            enabled = enabled,
+            presetIndex = current.presetIndex,
+            bandLevelsDb = current.bandLevelsDb,
+            activeCustomPresetId = current.activeCustomPresetId,
+        )
         viewModelScope.launch {
-            repository.saveEqualizer(enabled, current.presetIndex, current.bandLevelsDb)
+            repository.saveEqualizer(
+                enabled = enabled,
+                presetIndex = current.presetIndex,
+                bands = current.bandLevelsDb,
+                customPresetId = current.activeCustomPresetId,
+            )
         }
     }
 
     fun selectEqualizerPreset(presetIndex: Int) {
         val preset = AudioEqualizerController.presets.getOrNull(presetIndex) ?: return
-        AudioEqualizerController.applySettings(true, preset.index, preset.bandsDb)
+        AudioEqualizerController.applySettings(
+            enabled = true,
+            presetIndex = preset.index,
+            bandLevelsDb = preset.bandsDb,
+            activeCustomPresetId = null,
+        )
         viewModelScope.launch {
-            repository.saveEqualizer(true, preset.index, preset.bandsDb)
+            repository.saveEqualizer(true, preset.index, preset.bandsDb, customPresetId = null)
         }
     }
 
@@ -582,9 +684,85 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         if (bandIndex !in current.bandLevelsDb.indices) return
         val updated = current.bandLevelsDb.toMutableList()
         updated[bandIndex] = dbValue.coerceIn(-12, 12)
-        AudioEqualizerController.applySettings(true, -1, updated)
+        AudioEqualizerController.applySettings(
+            enabled = true,
+            presetIndex = -1,
+            bandLevelsDb = updated,
+            activeCustomPresetId = null,
+        )
         viewModelScope.launch {
-            repository.saveEqualizer(true, -1, updated)
+            repository.saveEqualizer(true, -1, updated, customPresetId = null)
+        }
+    }
+
+    fun saveCustomEqualizerPreset(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        val bands = equalizerState.value.bandLevelsDb.takeIf { it.size == 5 } ?: listOf(0, 0, 0, 0, 0)
+        val created = CustomEqPreset(
+            id = "custom_${System.currentTimeMillis()}",
+            name = trimmed,
+            bandsDb = bands.map { it.coerceIn(-12, 12) },
+        )
+        val nextPresets = uiState.value.preferences.customEqPresets + created
+        AudioEqualizerController.applySettings(
+            enabled = true,
+            presetIndex = -1,
+            bandLevelsDb = created.bandsDb,
+            activeCustomPresetId = created.id,
+        )
+        viewModelScope.launch {
+            repository.saveCustomEqPresets(nextPresets)
+            repository.saveEqualizer(true, -1, created.bandsDb, customPresetId = created.id)
+        }
+    }
+
+    fun selectCustomEqualizerPreset(presetId: String) {
+        val preset = uiState.value.preferences.customEqPresets.firstOrNull { it.id == presetId } ?: return
+        AudioEqualizerController.applySettings(
+            enabled = true,
+            presetIndex = -1,
+            bandLevelsDb = preset.bandsDb,
+            activeCustomPresetId = preset.id,
+        )
+        viewModelScope.launch {
+            repository.saveEqualizer(true, -1, preset.bandsDb, customPresetId = preset.id)
+        }
+    }
+
+    fun renameCustomEqualizerPreset(presetId: String, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isBlank()) return
+        val updated = uiState.value.preferences.customEqPresets.map { preset ->
+            if (preset.id == presetId) preset.copy(name = trimmed) else preset
+        }
+        viewModelScope.launch {
+            repository.saveCustomEqPresets(updated)
+        }
+    }
+
+    fun deleteCustomEqualizerPreset(presetId: String) {
+        val updated = uiState.value.preferences.customEqPresets.filterNot { it.id == presetId }
+        val current = equalizerState.value
+        val wasActive = current.activeCustomPresetId == presetId
+        if (wasActive) {
+            AudioEqualizerController.applySettings(
+                enabled = current.enabled,
+                presetIndex = current.presetIndex,
+                bandLevelsDb = current.bandLevelsDb,
+                activeCustomPresetId = null,
+            )
+        }
+        viewModelScope.launch {
+            repository.saveCustomEqPresets(updated)
+            if (wasActive) {
+                repository.saveEqualizer(
+                    enabled = current.enabled,
+                    presetIndex = current.presetIndex,
+                    bands = current.bandLevelsDb,
+                    customPresetId = null,
+                )
+            }
         }
     }
 
@@ -614,6 +792,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setReducedMotion(enabled: Boolean) {
         viewModelScope.launch { repository.setReducedMotion(enabled) }
+    }
+
+    fun setCrossfadeEnabled(enabled: Boolean) {
+        mediaController?.let { sendCrossfadeCommand(it, enabled) }
+        viewModelScope.launch { repository.setCrossfadeEnabled(enabled) }
     }
 
     fun showStatus(message: String) {
@@ -700,4 +883,102 @@ fun formatDuration(ms: Long): String {
     val mins = totalSec / 60L
     val secs = totalSec % 60L
     return "$mins:${secs.toString().padStart(2, '0')}"
+}
+
+sealed interface MediaQueueAction {
+    data object None : MediaQueueAction
+    data class Move(val fromIndex: Int, val toIndex: Int) : MediaQueueAction
+    data class Insert(val index: Int, val track: Track) : MediaQueueAction
+    data class Append(val track: Track) : MediaQueueAction
+}
+
+data class QueueMutationResult(
+    val queue: List<Track>,
+    val currentIndex: Int,
+    val mediaControllerAction: MediaQueueAction,
+)
+
+object QueueOperations {
+    fun playNext(queue: List<Track>, currentTrackId: String?, track: Track): QueueMutationResult {
+        val currentIdx = queue.indexOfFirst { it.id == currentTrackId }
+        if (queue.isEmpty() || currentIdx < 0) {
+            return QueueMutationResult(listOf(track), 0, MediaQueueAction.Append(track))
+        }
+        val existingIdx = queue.indexOfFirst { it.id == track.id }
+        if (existingIdx == currentIdx) {
+            return QueueMutationResult(queue, currentIdx, MediaQueueAction.None)
+        }
+        val mutable = queue.toMutableList()
+        val action = if (existingIdx >= 0) {
+            val destIdx = if (existingIdx < currentIdx) {
+                currentIdx
+            } else {
+                (currentIdx + 1).coerceAtMost(queue.lastIndex)
+            }
+            if (existingIdx == destIdx) {
+                MediaQueueAction.None
+            } else {
+                val item = mutable.removeAt(existingIdx)
+                mutable.add(destIdx, item)
+                MediaQueueAction.Move(existingIdx, destIdx)
+            }
+        } else {
+            val insertIdx = (currentIdx + 1).coerceIn(0, mutable.size)
+            mutable.add(insertIdx, track)
+            MediaQueueAction.Insert(insertIdx, track)
+        }
+        val nextCurrentIdx = mutable.indexOfFirst { it.id == currentTrackId }.coerceAtLeast(0)
+        return QueueMutationResult(mutable, nextCurrentIdx, action)
+    }
+
+    fun addToQueue(queue: List<Track>, currentTrackId: String?, track: Track): QueueMutationResult {
+        val currentIdx = queue.indexOfFirst { it.id == currentTrackId }
+        if (queue.isEmpty() || currentIdx < 0) {
+            return QueueMutationResult(listOf(track), 0, MediaQueueAction.Append(track))
+        }
+        val existingIdx = queue.indexOfFirst { it.id == track.id }
+        if (existingIdx == currentIdx) {
+            return QueueMutationResult(queue, currentIdx, MediaQueueAction.None)
+        }
+        val mutable = queue.toMutableList()
+        val action = if (existingIdx >= 0) {
+            val destIdx = mutable.lastIndex
+            if (existingIdx == destIdx) {
+                MediaQueueAction.None
+            } else {
+                val item = mutable.removeAt(existingIdx)
+                mutable.add(destIdx, item)
+                MediaQueueAction.Move(existingIdx, destIdx)
+            }
+        } else {
+            mutable.add(track)
+            MediaQueueAction.Append(track)
+        }
+        val nextCurrentIdx = mutable.indexOfFirst { it.id == currentTrackId }.coerceAtLeast(0)
+        return QueueMutationResult(mutable, nextCurrentIdx, action)
+    }
+
+    fun moveQueueItem(
+        queue: List<Track>,
+        currentTrackId: String?,
+        fromIndex: Int,
+        toIndex: Int,
+    ): QueueMutationResult? {
+        if (fromIndex !in queue.indices || toIndex !in queue.indices || fromIndex == toIndex) {
+            return null
+        }
+        val mutable = queue.toMutableList()
+        val moved = mutable.removeAt(fromIndex)
+        mutable.add(toIndex, moved)
+        val nextCurrentIdx = if (currentTrackId != null) {
+            mutable.indexOfFirst { it.id == currentTrackId }
+        } else {
+            -1
+        }
+        return QueueMutationResult(
+            queue = mutable,
+            currentIndex = nextCurrentIdx,
+            mediaControllerAction = MediaQueueAction.Move(fromIndex, toIndex),
+        )
+    }
 }

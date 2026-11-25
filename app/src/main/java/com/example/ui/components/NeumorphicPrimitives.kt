@@ -272,11 +272,11 @@ fun TactileCapsuleButton(
     // Recessed chassis bezel housing
     Box(
         contentAlignment = Alignment.Center,
+        propagateMinConstraints = true,
         modifier = modifier
             .clip(outerShape)
             .background(palette.plinthEdgeShadow.copy(alpha = if (palette.isDark) 0.55f else 0.24f))
             .border(0.8.dp, palette.hairline, outerShape)
-            .padding(2.dp)
             .semantics { this.contentDescription = contentDescription }
             .clickable(
                 interactionSource = interactionSource,
@@ -285,13 +285,13 @@ fun TactileCapsuleButton(
             ) {
                 PlinthFeedback.trigger(feedbackEvent)
                 onClick()
-            },
+            }
+            .padding(2.dp),
     ) {
         // 3D Physical Keycap Skirt + Machined Face
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .fillMaxSize()
                 .graphicsLayer {
                     translationY = pressTravelDp.toPx()
                     rotationX = tiltDeg

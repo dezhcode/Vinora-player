@@ -28,6 +28,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AudioFile
@@ -35,8 +37,11 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +66,7 @@ import com.example.audio.FeedbackEvent
 import com.example.audio.PlinthFeedback
 import com.example.data.AlbumGroup
 import com.example.data.ArtistGroup
+import com.example.data.FolderGroup
 import com.example.data.PlaylistSummary
 import com.example.data.Track
 import com.example.ui.components.CircularArtworkDisc
@@ -70,12 +76,13 @@ import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
 
 enum class LibraryTab {
-    SONGS, ALBUMS, ARTISTS, PLAYLISTS, FAVORITES
+    SONGS, ALBUMS, ARTISTS, FOLDERS, PLAYLISTS, FAVORITES
 }
 
 private sealed interface LibraryDetail {
     data class Album(val group: AlbumGroup) : LibraryDetail
     data class Artist(val group: ArtistGroup) : LibraryDetail
+    data class Folder(val group: FolderGroup) : LibraryDetail
     data class Playlist(val playlist: PlaylistSummary) : LibraryDetail
 }
 
@@ -84,12 +91,15 @@ fun LibraryScreen(
     tracks: List<Track>,
     albums: List<AlbumGroup>,
     artists: List<ArtistGroup>,
+    folders: List<FolderGroup> = emptyList(),
     playlists: List<PlaylistSummary>,
     favoriteIds: Set<String>,
     activeTrackId: String?,
     initialSearchFocused: Boolean,
     hapticsEnabled: Boolean,
     onPlayTrack: (Track, List<Track>) -> Unit,
+    onPlayNext: (Track) -> Unit = {},
+    onAddToQueue: (Track) -> Unit = {},
     onToggleFavorite: (String) -> Unit,
     onOpenAddToPlaylist: (Track) -> Unit,
     onOpenCreatePlaylist: () -> Unit,
@@ -125,6 +135,12 @@ fun LibraryScreen(
             is LibraryDetail.Artist -> {
                 detailTitle = detail.group.name
                 detailSubtitle = strings.tracksCount(detail.group.tracks.size)
+                detailTracks = detail.group.tracks
+                detailPlaylistId = null
+            }
+            is LibraryDetail.Folder -> {
+                detailTitle = detail.group.name
+                detailSubtitle = "${detail.group.path} • ${strings.tracksCount(detail.group.tracks.size)}"
                 detailTracks = detail.group.tracks
                 detailPlaylistId = null
             }
@@ -217,23 +233,36 @@ fun LibraryScreen(
                             },
                             trailing = {
                                 if (detailPlaylistId != null) {
-                                    IconButton(
-                                        onClick = {
-                                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
-                                            onRemoveFromPlaylist(detailPlaylistId, track.id)
-                                        },
-                                        modifier = Modifier.size(48.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.DeleteOutline,
-                                            contentDescription = strings.delete,
-                                            tint = palette.inkSecondary,
+                                    Row {
+                                        TrackTrailingActions(
+                                            trackId = track.id,
+                                            isFavorite = favoriteIds.contains(track.id),
+                                            onToggleFavorite = { onToggleFavorite(track.id) },
+                                            onPlayNext = { onPlayNext(track) },
+                                            onAddToQueue = { onAddToQueue(track) },
+                                            onAddToPlaylist = { onOpenAddToPlaylist(track) },
                                         )
+                                        IconButton(
+                                            onClick = {
+                                                PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                                onRemoveFromPlaylist(detailPlaylistId, track.id)
+                                            },
+                                            modifier = Modifier.size(44.dp),
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.DeleteOutline,
+                                                contentDescription = strings.delete,
+                                                tint = palette.inkSecondary,
+                                            )
+                                        }
                                     }
                                 } else {
                                     TrackTrailingActions(
+                                        trackId = track.id,
                                         isFavorite = favoriteIds.contains(track.id),
                                         onToggleFavorite = { onToggleFavorite(track.id) },
+                                        onPlayNext = { onPlayNext(track) },
+                                        onAddToQueue = { onAddToQueue(track) },
                                         onAddToPlaylist = { onOpenAddToPlaylist(track) },
                                     )
                                 }
@@ -354,6 +383,7 @@ fun LibraryScreen(
             LibraryTab.SONGS to strings.songs,
             LibraryTab.ALBUMS to strings.albums,
             LibraryTab.ARTISTS to strings.artists,
+            LibraryTab.FOLDERS to strings.folders,
             LibraryTab.PLAYLISTS to strings.playlists,
             LibraryTab.FAVORITES to strings.favorites,
         )
@@ -405,8 +435,11 @@ fun LibraryScreen(
                                 },
                                 trailing = {
                                     TrackTrailingActions(
+                                        trackId = track.id,
                                         isFavorite = favoriteIds.contains(track.id),
                                         onToggleFavorite = { onToggleFavorite(track.id) },
+                                        onPlayNext = { onPlayNext(track) },
+                                        onAddToQueue = { onAddToQueue(track) },
                                         onAddToPlaylist = { onOpenAddToPlaylist(track) },
                                     )
                                 },
@@ -531,6 +564,76 @@ fun LibraryScreen(
                 }
             }
 
+            LibraryTab.FOLDERS -> {
+                val filteredFolders = remember(folders, query) {
+                    if (query.isEmpty()) folders
+                    else folders.filter { folder ->
+                        folder.name.contains(query, ignoreCase = true) ||
+                            folder.path.contains(query, ignoreCase = true) ||
+                            folder.tracks.any { it.title.contains(query, ignoreCase = true) }
+                    }
+                }
+                if (filteredFolders.isEmpty()) {
+                    EmptyLibraryHint(strings.emptySearch)
+                } else {
+                    LazyColumn(
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 128.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(filteredFolders, key = { it.path }) { folder ->
+                            val shape = RoundedCornerShape(22.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(shape)
+                                    .background(palette.capsuleBg.copy(alpha = 0.85f))
+                                    .border(1.dp, palette.hairline, shape)
+                                    .clickable {
+                                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                        activeDetail = LibraryDetail.Folder(folder)
+                                    }
+                                    .padding(12.dp)
+                                    .testTag("folder_card_${folder.path}"),
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(CircleShape)
+                                        .background(Brush.verticalGradient(listOf(palette.plinthTop, palette.plinthBottom)))
+                                        .border(1.dp, palette.hairline, CircleShape),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.FolderOpen,
+                                        contentDescription = folder.name,
+                                        tint = palette.inkPrimary,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = folder.name,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        color = palette.inkPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = "${folder.path} • ${strings.tracksCount(folder.tracks.size)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = palette.inkSecondary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             LibraryTab.PLAYLISTS -> {
                 LazyColumn(
                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 128.dp),
@@ -632,8 +735,11 @@ fun LibraryScreen(
                                 },
                                 trailing = {
                                     TrackTrailingActions(
+                                        trackId = track.id,
                                         isFavorite = true,
                                         onToggleFavorite = { onToggleFavorite(track.id) },
+                                        onPlayNext = { onPlayNext(track) },
+                                        onAddToQueue = { onAddToQueue(track) },
                                         onAddToPlaylist = { onOpenAddToPlaylist(track) },
                                     )
                                 },
@@ -648,12 +754,17 @@ fun LibraryScreen(
 
 @Composable
 private fun TrackTrailingActions(
+    trackId: String,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
+    onPlayNext: () -> Unit,
+    onAddToQueue: () -> Unit,
     onAddToPlaylist: () -> Unit,
 ) {
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
+    var menuExpanded by remember { mutableStateOf(false) }
+
     Row {
         IconButton(
             onClick = {
@@ -669,19 +780,65 @@ private fun TrackTrailingActions(
                 modifier = Modifier.size(20.dp),
             )
         }
-        IconButton(
-            onClick = {
-                PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
-                onAddToPlaylist()
-            },
-            modifier = Modifier.size(44.dp),
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
-                contentDescription = strings.addToPlaylist,
-                tint = palette.inkSecondary,
-                modifier = Modifier.size(21.dp),
-            )
+        Box {
+            IconButton(
+                onClick = {
+                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                    menuExpanded = true
+                },
+                modifier = Modifier
+                    .size(44.dp)
+                    .testTag("track_more_$trackId"),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.MoreVert,
+                    contentDescription = strings.moreOptions,
+                    tint = palette.inkSecondary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+                containerColor = palette.capsuleBg,
+            ) {
+                DropdownMenuItem(
+                    text = { Text(strings.playNext, color = palette.inkPrimary) },
+                    leadingIcon = {
+                        Icon(Icons.AutoMirrored.Rounded.PlaylistPlay, null, tint = palette.inkPrimary)
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
+                        onPlayNext()
+                    },
+                    modifier = Modifier.testTag("menu_play_next_$trackId"),
+                )
+                DropdownMenuItem(
+                    text = { Text(strings.addToQueue, color = palette.inkPrimary) },
+                    leadingIcon = {
+                        Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = palette.inkPrimary)
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
+                        onAddToQueue()
+                    },
+                    modifier = Modifier.testTag("menu_add_to_queue_$trackId"),
+                )
+                DropdownMenuItem(
+                    text = { Text(strings.addToPlaylist, color = palette.inkPrimary) },
+                    leadingIcon = {
+                        Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, tint = palette.inkPrimary)
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                        onAddToPlaylist()
+                    },
+                    modifier = Modifier.testTag("menu_add_to_playlist_$trackId"),
+                )
+            }
         }
     }
 }

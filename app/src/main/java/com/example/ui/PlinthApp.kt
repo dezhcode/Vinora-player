@@ -189,6 +189,12 @@ fun PlinthApp(
                                         viewModel.playTrack(track, uiState.tracks)
                                         isNowPlayingOpen = true
                                     },
+                                    onPlayNext = { track ->
+                                        viewModel.playNext(track, strings.playingNext(track.title))
+                                    },
+                                    onAddToQueue = { track ->
+                                        viewModel.addToQueue(track, strings.addedToQueue(track.title))
+                                    },
                                     onImportAudio = ::triggerImportAudio,
                                     onScanDevice = ::triggerScanDevice,
                                     onOpenEqualizer = { showEqualizerSheet = true },
@@ -214,6 +220,13 @@ fun PlinthApp(
                                         viewModel.playTrack(track, queue)
                                         isNowPlayingOpen = true
                                     },
+                                    onPlayNext = { track ->
+                                        viewModel.playNext(track, strings.playingNext(track.title))
+                                    },
+                                    onAddToQueue = { track ->
+                                        viewModel.addToQueue(track, strings.addedToQueue(track.title))
+                                    },
+                                    onOpenAddToPlaylist = { track -> trackForPlaylistDialog = track },
                                     onTogglePlayPause = {
                                         ensureNotificationPermission()
                                         viewModel.togglePlayPause()
@@ -235,6 +248,7 @@ fun PlinthApp(
                                     tracks = uiState.tracks,
                                     albums = uiState.albums,
                                     artists = uiState.artists,
+                                    folders = uiState.folders,
                                     playlists = uiState.playlists,
                                     favoriteIds = uiState.favoriteIds,
                                     activeTrackId = uiState.currentTrack?.id,
@@ -244,6 +258,12 @@ fun PlinthApp(
                                         ensureNotificationPermission()
                                         viewModel.playTrack(track, queue)
                                         isNowPlayingOpen = true
+                                    },
+                                    onPlayNext = { track ->
+                                        viewModel.playNext(track, strings.playingNext(track.title))
+                                    },
+                                    onAddToQueue = { track ->
+                                        viewModel.addToQueue(track, strings.addedToQueue(track.title))
                                     },
                                     onToggleFavorite = viewModel::toggleFavorite,
                                     onOpenAddToPlaylist = { track -> trackForPlaylistDialog = track },
@@ -383,6 +403,7 @@ fun PlinthApp(
                 viewModel.playTrack(track, uiState.queue)
                 showQueueSheet = false
             },
+            onMoveItem = viewModel::moveQueueItem,
             onRemoveIndex = viewModel::removeFromQueue,
             onDismiss = { showQueueSheet = false },
         )
@@ -393,9 +414,14 @@ fun PlinthApp(
             eqState = eqState,
             spectrumFlow = viewModel.spectrum,
             hapticsEnabled = uiState.preferences.hapticsEnabled,
+            customPresets = uiState.preferences.customEqPresets,
             onToggleEnabled = viewModel::setEqualizerEnabled,
             onSelectPreset = viewModel::selectEqualizerPreset,
             onBandChange = viewModel::setEqualizerBand,
+            onSaveCustomPreset = viewModel::saveCustomEqualizerPreset,
+            onSelectCustomPreset = viewModel::selectCustomEqualizerPreset,
+            onRenameCustomPreset = viewModel::renameCustomEqualizerPreset,
+            onDeleteCustomPreset = viewModel::deleteCustomEqualizerPreset,
             onDismiss = { showEqualizerSheet = false },
         )
     }
@@ -412,6 +438,7 @@ fun PlinthApp(
             onSetGraphicsQuality = viewModel::setGraphicsQuality,
             onSetBatterySaver = viewModel::setBatterySaverMode,
             onSetReducedMotion = viewModel::setReducedMotion,
+            onSetCrossfade = viewModel::setCrossfadeEnabled,
             onImportAudio = ::triggerImportAudio,
             onScanDevice = ::triggerScanDevice,
             onDismiss = { showSettingsSheet = false },

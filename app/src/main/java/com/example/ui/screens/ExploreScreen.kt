@@ -44,6 +44,8 @@ fun ExploreScreen(
     hapticsEnabled: Boolean,
     reducedMotion: Boolean,
     onSelectTrackAndOpenPlayer: (Track) -> Unit,
+    onPlayNext: (Track) -> Unit = {},
+    onAddToQueue: (Track) -> Unit = {},
     onImportAudio: () -> Unit,
     onScanDevice: () -> Unit,
     onOpenEqualizer: () -> Unit,
@@ -53,6 +55,7 @@ fun ExploreScreen(
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
     var menuExpanded by remember { mutableStateOf(false) }
+    var focusedTrack by remember(tracks) { mutableStateOf(tracks.firstOrNull()) }
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -97,6 +100,24 @@ fun ExploreScreen(
                     onDismissRequest = { menuExpanded = false },
                     containerColor = palette.capsuleBg,
                 ) {
+                    focusedTrack?.let { currentFocused ->
+                        DropdownMenuItem(
+                            text = { Text("${strings.playNext}: ${currentFocused.title}", color = palette.inkPrimary) },
+                            onClick = {
+                                PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
+                                menuExpanded = false
+                                onPlayNext(currentFocused)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("${strings.addToQueue}: ${currentFocused.title}", color = palette.inkPrimary) },
+                            onClick = {
+                                PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
+                                menuExpanded = false
+                                onAddToQueue(currentFocused)
+                            },
+                        )
+                    }
                     DropdownMenuItem(
                         text = { Text(strings.importAudio, color = palette.inkPrimary) },
                         onClick = {
@@ -146,6 +167,7 @@ fun ExploreScreen(
                 hapticsEnabled = hapticsEnabled,
                 reducedMotion = reducedMotion,
                 onSelectAndPlay = onSelectTrackAndOpenPlayer,
+                onFocusedTrackChange = { focusedTrack = it },
             )
         }
     }

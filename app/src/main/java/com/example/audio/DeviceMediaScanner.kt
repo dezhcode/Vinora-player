@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import com.example.data.ImportedTrackEntity
@@ -18,15 +19,20 @@ object DeviceMediaScanner {
 
     suspend fun scanDeviceAudio(context: Context): List<Track> = withContext(Dispatchers.IO) {
         val tracks = mutableListOf<Track>()
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.ALBUM,
-            MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.DATE_ADDED,
-        )
+        val projection = buildList {
+            add(MediaStore.Audio.Media._ID)
+            add(MediaStore.Audio.Media.TITLE)
+            add(MediaStore.Audio.Media.ARTIST)
+            add(MediaStore.Audio.Media.ALBUM)
+            add(MediaStore.Audio.Media.ALBUM_ID)
+            add(MediaStore.Audio.Media.DURATION)
+            add(MediaStore.Audio.Media.DATE_ADDED)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.Audio.Media.RELATIVE_PATH)
+            }
+            @Suppress("DEPRECATION")
+            add(MediaStore.Audio.Media.DATA)
+        }.toTypedArray()
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND ${MediaStore.Audio.Media.DURATION} > 3000"
         val sortOrder = "${MediaStore.Audio.Media.DATE_ADDED} DESC"
 
@@ -45,6 +51,13 @@ object DeviceMediaScanner {
                 val albumIdCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
                 val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
                 val dateCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+                val relPathCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+                } else {
+                    -1
+                }
+                @Suppress("DEPRECATION")
+                val dataCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
 
                 while (cursor.moveToNext()) {
                     val mediaId = cursor.getLong(idCol)
@@ -55,6 +68,10 @@ object DeviceMediaScanner {
                     val albumId = cursor.getLong(albumIdCol)
                     val duration = cursor.getLong(durationCol).coerceAtLeast(1000L)
                     val dateAdded = cursor.getLong(dateCol) * 1000L
+
+                    val relPath = if (relPathCol >= 0) cursor.getString(relPathCol) else null
+                    val dataPath = if (dataCol >= 0) cursor.getString(dataCol) else null
+                    val (folderName, folderPath) = resolveMediaStoreFolder(relPath, dataPath)
 
                     val contentUri = ContentUris.withAppendedId(
                         MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -81,6 +98,8 @@ object DeviceMediaScanner {
                             artworkUri = albumArtUri,
                             isBuiltIn = false,
                             dateAdded = dateAdded,
+                            folderName = folderName,
+                            folderPath = folderPath,
                         )
                     )
                 }
@@ -168,5 +187,41 @@ object DeviceMediaScanner {
                     if (cursor.moveToFirst()) cursor.getString(0) else null
                 }
         }.getOrNull()
+    }
+
+    fun resolveMediaStoreFolder(relativePath: String?, dataPath: String?): Pair<String, String> {
+        val cleanedRel = relativePath?.trim()?.trimEnd('/', '\\')?.takeIf { it.isNotBlank() }
+        if (cleanedRel != null) {
+            val name = cleanedRel.substringAfterLast('/').substringAfterLast('\\').ifBlank { cleanedRel }
+            return name to cleanedRel
+        }
+        val parentFile = dataPath?.takeIf { it.isNotBlank() }?.let { File(it).parentFile }
+        if (parentFile != null) {
+            val name = parentFile.name.ifBlank { "Device Storage" }
+            val path = parentFile.path.ifBlank { name }
+            return name to path
+        }
+        return "Device Audio" to "Device Audio"
+    }
+
+    fun resolveFolderFromUri(uriString: String): Pair<String, String> {
+        val decoded = runCatching { Uri.decode(uriString) }.getOrDefault(uriString)
+        val parsed = runCatching { Uri.parse(uriString) }.getOrNull()
+        if (parsed?.scheme == "file") {
+            val parent = parsed.path?.let { File(it).parentFile }
+            if (parent != null) {
+                val name = parent.name.ifBlank { "Local Files" }
+                return name to (parent.path.ifBlank { name })
+            }
+        }
+        // SAF document URIs often contain "primary:Music/Rock/song.mp3" or ".../document/..."
+        val docPart = decoded.substringAfter("/document/", "").ifBlank { decoded.substringAfterLast('/') }
+        val cleanDoc = docPart.substringAfter(':', docPart).trim('/')
+        val parentDir = cleanDoc.substringBeforeLast('/', "")
+        if (parentDir.isNotBlank()) {
+            val name = parentDir.substringAfterLast('/').ifBlank { parentDir }
+            return name to parentDir
+        }
+        return "Imported" to "Imported"
     }
 }

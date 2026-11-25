@@ -44,7 +44,9 @@ object SpectrumBus {
  * requiring microphone (RECORD_AUDIO) permission.
  */
 @OptIn(UnstableApi::class)
-class AudioSpectrumProcessor : BaseAudioProcessor() {
+class AudioSpectrumProcessor(
+    @Volatile var publishToSpectrumBus: Boolean = true,
+) : BaseAudioProcessor() {
 
     private val fftSize = 256
     private val ringBuffer = FloatArray(fftSize)
@@ -59,6 +61,10 @@ class AudioSpectrumProcessor : BaseAudioProcessor() {
     private var smoothedMid = 0f
     private var smoothedTreble = 0f
     private var lastEmitNanos = 0L
+
+    @Volatile
+    var peakAmplitude: Float = 0f
+        private set
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
         if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
@@ -75,27 +81,41 @@ class AudioSpectrumProcessor : BaseAudioProcessor() {
         val channelCount = inputAudioFormat.channelCount.coerceAtLeast(1)
         val frameBytes = channelCount * 2
 
-        // Tap PCM samples non-destructively into our FFT ring buffer
+        // Tap PCM samples non-destructively into our FFT ring buffer and measure peak amplitude
         var offset = startPos
         val limit = inputBuffer.limit()
+        var bufferPeak = 0f
         while (offset + frameBytes <= limit) {
             var monoSum = 0f
             for (ch in 0 until channelCount) {
                 val lo = inputBuffer.get(offset + ch * 2).toInt() and 0xFF
                 val hi = inputBuffer.get(offset + ch * 2 + 1).toInt()
                 val sample = ((hi shl 8) or lo).toShort()
-                monoSum += sample / 32768f
+                val normalized = sample / 32768f
+                val absSample = if (normalized < 0f) -normalized else normalized
+                if (absSample > bufferPeak) bufferPeak = absSample
+                monoSum += normalized
             }
             ringBuffer[ringIndex] = monoSum / channelCount
             ringIndex = (ringIndex + 1) and (fftSize - 1)
             offset += frameBytes
         }
 
+        // Fast-attack, slow-release envelope for dual-deck anti-clipping gain calculation
+        val prevPeak = peakAmplitude
+        peakAmplitude = if (bufferPeak >= prevPeak) {
+            bufferPeak.coerceIn(0f, 1f)
+        } else {
+            (prevPeak * 0.90f + bufferPeak * 0.10f).coerceIn(0f, 1f)
+        }
+
         // Throttle FFT emissions to ~45 Hz for buttery smooth low-overhead rendering
-        val now = System.nanoTime()
-        if (now - lastEmitNanos >= 22_000_000L) {
-            lastEmitNanos = now
-            computeAndEmitFft()
+        if (publishToSpectrumBus) {
+            val now = System.nanoTime()
+            if (now - lastEmitNanos >= 22_000_000L) {
+                lastEmitNanos = now
+                computeAndEmitFft()
+            }
         }
 
         // Pass audio samples through completely unmodified
@@ -107,6 +127,7 @@ class AudioSpectrumProcessor : BaseAudioProcessor() {
     override fun onFlush() {
         ringBuffer.fill(0f)
         ringIndex = 0
+        peakAmplitude = 0f
     }
 
     override fun onReset() {
@@ -115,7 +136,10 @@ class AudioSpectrumProcessor : BaseAudioProcessor() {
         smoothedBass = 0f
         smoothedMid = 0f
         smoothedTreble = 0f
-        SpectrumBus.decayToIdle()
+        peakAmplitude = 0f
+        if (publishToSpectrumBus) {
+            SpectrumBus.decayToIdle()
+        }
     }
 
     private fun computeAndEmitFft() {

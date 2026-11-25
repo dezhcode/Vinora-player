@@ -21,17 +21,27 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
+import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,6 +76,9 @@ fun HomeScreen(
     isScanningDevice: Boolean,
     hapticsEnabled: Boolean,
     onPlayTrack: (Track, List<Track>) -> Unit,
+    onPlayNext: (Track) -> Unit = {},
+    onAddToQueue: (Track) -> Unit = {},
+    onOpenAddToPlaylist: (Track) -> Unit = {},
     onTogglePlayPause: () -> Unit,
     onOpenNowPlaying: () -> Unit,
     onOpenSearch: () -> Unit,
@@ -371,12 +384,70 @@ fun HomeScreen(
                 )
             }
             items(favoriteTracks.take(5), key = { "fav_${it.id}" }) { track ->
+                var menuOpen by remember(track.id) { mutableStateOf(false) }
                 CompactVinylTrackRow(
                     track = track,
                     isActive = track.id == currentTrack?.id,
                     onClick = {
                         PlinthFeedback.trigger(FeedbackEvent.PLAY_PAUSE)
                         onPlayTrack(track, favoriteTracks)
+                    },
+                    trailing = {
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                    menuOpen = true
+                                },
+                                modifier = Modifier.size(44.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.MoreVert,
+                                    contentDescription = strings.moreOptions,
+                                    tint = palette.inkSecondary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = menuOpen,
+                                onDismissRequest = { menuOpen = false },
+                                containerColor = palette.capsuleBg,
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(strings.playNext, color = palette.inkPrimary) },
+                                    leadingIcon = {
+                                        Icon(Icons.AutoMirrored.Rounded.PlaylistPlay, null, tint = palette.inkPrimary)
+                                    },
+                                    onClick = {
+                                        menuOpen = false
+                                        PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
+                                        onPlayNext(track)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(strings.addToQueue, color = palette.inkPrimary) },
+                                    leadingIcon = {
+                                        Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = palette.inkPrimary)
+                                    },
+                                    onClick = {
+                                        menuOpen = false
+                                        PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
+                                        onAddToQueue(track)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(strings.addToPlaylist, color = palette.inkPrimary) },
+                                    leadingIcon = {
+                                        Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, tint = palette.inkPrimary)
+                                    },
+                                    onClick = {
+                                        menuOpen = false
+                                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                        onOpenAddToPlaylist(track)
+                                    },
+                                )
+                            }
+                        }
                     },
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )

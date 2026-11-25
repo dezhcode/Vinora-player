@@ -76,6 +76,7 @@ fun CurvedDiscCarousel(
     hapticsEnabled: Boolean,
     reducedMotion: Boolean,
     onSelectAndPlay: (Track) -> Unit,
+    onFocusedTrackChange: (Track) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (tracks.isEmpty()) return
@@ -102,8 +103,9 @@ fun CurvedDiscCarousel(
     }
 
     // Fire crisp subtle tactile + mechanical detent whenever the centered disc crosses a track
-    LaunchedEffect(scrollIndex.value.roundToInt()) {
+    LaunchedEffect(scrollIndex.value.roundToInt(), tracks) {
         val snapped = scrollIndex.value.roundToInt().coerceIn(0, tracks.lastIndex)
+        onFocusedTrackChange(tracks[snapped])
         if (snapped != lastHapticIndex) {
             lastHapticIndex = snapped
             PlinthFeedback.triggerSliderDetent(isMajorNotch = false)

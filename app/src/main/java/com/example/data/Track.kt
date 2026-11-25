@@ -17,6 +17,8 @@ data class Track(
     val artworkUri: String? = null,
     val isBuiltIn: Boolean = false,
     val dateAdded: Long = 0L,
+    val folderName: String = "Plinth Studio",
+    val folderPath: String = "Plinth Studio",
 )
 
 @Immutable
@@ -30,6 +32,14 @@ data class AlbumGroup(
 @Immutable
 data class ArtistGroup(
     val name: String,
+    val artworkUri: String?,
+    val tracks: List<Track>,
+)
+
+@Immutable
+data class FolderGroup(
+    val name: String,
+    val path: String,
     val artworkUri: String?,
     val tracks: List<Track>,
 )

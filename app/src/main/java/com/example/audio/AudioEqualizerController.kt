@@ -17,6 +17,7 @@ data class EqualizerState(
     val enabled: Boolean = false,
     val hardwareAttached: Boolean = false,
     val presetIndex: Int = 0,
+    val activeCustomPresetId: String? = null,
     val bandLabels: List<String> = listOf("60Hz", "230Hz", "910Hz", "3.6kHz", "14kHz"),
     val bandLevelsDb: List<Int> = listOf(0, 0, 0, 0, 0),
 )
@@ -32,20 +33,22 @@ object AudioEqualizerController {
         EqPreset(5, listOf(6, 3, -1, 4, 6)),      // Electronic
     )
 
-    private var equalizer: Equalizer? = null
-    private var attachedSessionId: Int = 0
+    private val sessionEqualizers = linkedMapOf<Int, Equalizer>()
 
     private val _state = MutableStateFlow(EqualizerState())
     val state: StateFlow<EqualizerState> = _state.asStateFlow()
 
     @Synchronized
     fun attachToSession(audioSessionId: Int) {
-        if (audioSessionId <= 0 || audioSessionId == attachedSessionId) return
-        releaseInternal()
-        attachedSessionId = audioSessionId
+        if (audioSessionId <= 0) return
+        val existing = sessionEqualizers[audioSessionId]
+        if (existing != null) {
+            applyToHardware(existing, _state.value)
+            return
+        }
         runCatching {
             val eq = Equalizer(0, audioSessionId)
-            equalizer = eq
+            sessionEqualizers[audioSessionId] = eq
             val numBands = eq.numberOfBands.toInt().coerceAtMost(5)
             val labels = if (numBands == 5) {
                 (0 until 5).map { b ->
@@ -59,15 +62,33 @@ object AudioEqualizerController {
                 hardwareAttached = true,
                 bandLabels = labels,
             )
-            applyToHardware(_state.value)
+            applyToHardware(eq, _state.value)
         }.onFailure {
-            equalizer = null
+            if (sessionEqualizers.isEmpty()) {
+                _state.value = _state.value.copy(hardwareAttached = false)
+            }
+        }
+    }
+
+    @Synchronized
+    fun detachSession(audioSessionId: Int) {
+        val removed = sessionEqualizers.remove(audioSessionId) ?: return
+        runCatching { removed.release() }
+        if (sessionEqualizers.isEmpty()) {
             _state.value = _state.value.copy(hardwareAttached = false)
         }
     }
 
     @Synchronized
-    fun applySettings(enabled: Boolean, presetIndex: Int, bandLevelsDb: List<Int>) {
+    fun activeSessionIds(): Set<Int> = sessionEqualizers.keys.toSet()
+
+    @Synchronized
+    fun applySettings(
+        enabled: Boolean,
+        presetIndex: Int,
+        bandLevelsDb: List<Int>,
+        activeCustomPresetId: String? = null,
+    ) {
         val clamped = if (bandLevelsDb.size == 5) {
             bandLevelsDb.map { it.coerceIn(-12, 12) }
         } else {
@@ -76,14 +97,14 @@ object AudioEqualizerController {
         val next = _state.value.copy(
             enabled = enabled,
             presetIndex = presetIndex,
+            activeCustomPresetId = activeCustomPresetId,
             bandLevelsDb = clamped,
         )
         _state.value = next
-        applyToHardware(next)
+        sessionEqualizers.values.forEach { eq -> applyToHardware(eq, next) }
     }
 
-    private fun applyToHardware(state: EqualizerState) {
-        val eq = equalizer ?: return
+    private fun applyToHardware(eq: Equalizer, state: EqualizerState) {
         runCatching {
             eq.enabled = state.enabled
             val range = eq.bandLevelRange
@@ -99,12 +120,10 @@ object AudioEqualizerController {
 
     @Synchronized
     fun release() {
-        releaseInternal()
-        attachedSessionId = 0
-    }
-
-    private fun releaseInternal() {
-        runCatching { equalizer?.release() }
-        equalizer = null
+        sessionEqualizers.values.forEach { eq ->
+            runCatching { eq.release() }
+        }
+        sessionEqualizers.clear()
+        _state.value = _state.value.copy(hardwareAttached = false)
     }
 }

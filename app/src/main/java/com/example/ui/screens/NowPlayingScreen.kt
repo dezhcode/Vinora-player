@@ -421,7 +421,9 @@ fun NowPlayingScreen(
                     MinimalSkipIcon(
                         isNext = false,
                         tint = palette.inkPrimary,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier
+                            .size(18.dp)
+                            .testTag("icon_previous"),
                     )
                 }
 
@@ -470,7 +472,9 @@ fun NowPlayingScreen(
                     MinimalSkipIcon(
                         isNext = true,
                         tint = palette.inkPrimary,
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier
+                            .size(18.dp)
+                            .testTag("icon_next"),
                     )
                 }
             }

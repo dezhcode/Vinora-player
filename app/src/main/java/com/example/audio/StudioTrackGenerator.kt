@@ -205,6 +205,8 @@ object StudioTrackGenerator {
                 artworkUri = Uri.fromFile(coverFile).toString(),
                 isBuiltIn = true,
                 dateAdded = 1_700_000_000_000L + index * 1000L,
+                folderName = "Plinth Studio",
+                folderPath = "Plinth Studio",
             )
         }
     }

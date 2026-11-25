@@ -25,6 +25,7 @@ class MusicRepository(
         studioTracks,
     ) { device, imported, studio ->
         val mappedImported = imported.map {
+            val (folderName, folderPath) = DeviceMediaScanner.resolveFolderFromUri(it.contentUri)
             Track(
                 id = it.id,
                 title = it.title,
@@ -35,6 +36,8 @@ class MusicRepository(
                 artworkUri = it.artworkUri,
                 isBuiltIn = false,
                 dateAdded = it.dateAdded,
+                folderName = folderName,
+                folderPath = folderPath,
             )
         }
         (mappedImported + device + studio).distinctBy { it.id }
@@ -124,7 +127,15 @@ class MusicRepository(
     suspend fun setReducedMotion(enabled: Boolean) = preferences.setReducedMotion(enabled)
     suspend fun setShuffleEnabled(enabled: Boolean) = preferences.setShuffleEnabled(enabled)
     suspend fun setRepeatMode(mode: RepeatMode) = preferences.setRepeatMode(mode)
+    suspend fun setCrossfadeEnabled(enabled: Boolean) = preferences.setCrossfadeEnabled(enabled)
     suspend fun saveLastPlayback(trackId: String, positionMs: Long) = preferences.saveLastPlayback(trackId, positionMs)
-    suspend fun saveEqualizer(enabled: Boolean, presetIndex: Int, bands: List<Int>) =
-        preferences.saveEqualizer(enabled, presetIndex, bands)
+    suspend fun saveEqualizer(
+        enabled: Boolean,
+        presetIndex: Int,
+        bands: List<Int>,
+        customPresetId: String? = null,
+    ) = preferences.saveEqualizer(enabled, presetIndex, bands, customPresetId)
+
+    suspend fun saveCustomEqPresets(presets: List<CustomEqPreset>) =
+        preferences.saveCustomEqPresets(presets)
 }

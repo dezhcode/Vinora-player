@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -11,12 +12,21 @@ import com.example.ui.i18n.AppLanguage
 import com.example.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.dataStore by preferencesDataStore(name = "plinth_prefs")
 
 enum class GraphicsQuality {
     AUTO, HIGH, MEDIUM, LOW
 }
+
+@Immutable
+data class CustomEqPreset(
+    val id: String,
+    val name: String,
+    val bandsDb: List<Int>,
+)
 
 data class UserPreferences(
     val themeMode: ThemeMode = ThemeMode.LIGHT,
@@ -33,6 +43,9 @@ data class UserPreferences(
     val eqEnabled: Boolean = false,
     val eqPresetIndex: Int = 0,
     val eqBands: List<Int> = listOf(0, 0, 0, 0, 0),
+    val eqCustomPresetId: String? = null,
+    val customEqPresets: List<CustomEqPreset> = emptyList(),
+    val crossfadeEnabled: Boolean = false,
 )
 
 class PlaybackPreferences(private val context: Context) {
@@ -51,6 +64,9 @@ class PlaybackPreferences(private val context: Context) {
         val EQ_ENABLED = booleanPreferencesKey("eq_enabled")
         val EQ_PRESET = intPreferencesKey("eq_preset")
         val EQ_BANDS = stringPreferencesKey("eq_bands")
+        val EQ_CUSTOM_PRESET_ID = stringPreferencesKey("eq_custom_preset_id")
+        val CUSTOM_EQ_PRESETS = stringPreferencesKey("custom_eq_presets")
+        val CROSSFADE_ENABLED = booleanPreferencesKey("crossfade_enabled")
     }
 
     val preferencesFlow: Flow<UserPreferences> = context.dataStore.data.map { prefs ->
@@ -76,6 +92,8 @@ class PlaybackPreferences(private val context: Context) {
             ?.takeIf { it.size == 5 }
             ?: listOf(0, 0, 0, 0, 0)
 
+        val customPresets = decodeCustomPresets(prefs[Keys.CUSTOM_EQ_PRESETS])
+
         UserPreferences(
             themeMode = theme,
             language = lang,
@@ -91,6 +109,9 @@ class PlaybackPreferences(private val context: Context) {
             eqEnabled = prefs[Keys.EQ_ENABLED] ?: false,
             eqPresetIndex = prefs[Keys.EQ_PRESET] ?: 0,
             eqBands = bands,
+            eqCustomPresetId = prefs[Keys.EQ_CUSTOM_PRESET_ID]?.takeIf { it.isNotBlank() },
+            customEqPresets = customPresets,
+            crossfadeEnabled = prefs[Keys.CROSSFADE_ENABLED] ?: false,
         )
     }
 
@@ -130,6 +151,10 @@ class PlaybackPreferences(private val context: Context) {
         context.dataStore.edit { it[Keys.REPEAT_MODE] = mode.name }
     }
 
+    suspend fun setCrossfadeEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.CROSSFADE_ENABLED] = enabled }
+    }
+
     suspend fun saveLastPlayback(trackId: String, positionMs: Long) {
         context.dataStore.edit {
             it[Keys.LAST_TRACK_ID] = trackId
@@ -137,11 +162,62 @@ class PlaybackPreferences(private val context: Context) {
         }
     }
 
-    suspend fun saveEqualizer(enabled: Boolean, presetIndex: Int, bands: List<Int>) {
+    suspend fun saveEqualizer(
+        enabled: Boolean,
+        presetIndex: Int,
+        bands: List<Int>,
+        customPresetId: String? = null,
+    ) {
         context.dataStore.edit {
             it[Keys.EQ_ENABLED] = enabled
             it[Keys.EQ_PRESET] = presetIndex
             it[Keys.EQ_BANDS] = bands.joinToString(",")
+            if (customPresetId != null) {
+                it[Keys.EQ_CUSTOM_PRESET_ID] = customPresetId
+            } else {
+                it.remove(Keys.EQ_CUSTOM_PRESET_ID)
+            }
+        }
+    }
+
+    suspend fun saveCustomEqPresets(presets: List<CustomEqPreset>) {
+        context.dataStore.edit {
+            it[Keys.CUSTOM_EQ_PRESETS] = encodeCustomPresets(presets)
+        }
+    }
+
+    companion object {
+        fun encodeCustomPresets(presets: List<CustomEqPreset>): String {
+            val arr = JSONArray()
+            for (preset in presets) {
+                val bandsArr = JSONArray()
+                preset.bandsDb.forEach { bandsArr.put(it.coerceIn(-12, 12)) }
+                arr.put(
+                    JSONObject()
+                        .put("id", preset.id)
+                        .put("name", preset.name)
+                        .put("bands", bandsArr)
+                )
+            }
+            return arr.toString()
+        }
+
+        fun decodeCustomPresets(raw: String?): List<CustomEqPreset> {
+            if (raw.isNullOrBlank()) return emptyList()
+            return runCatching {
+                val arr = JSONArray(raw)
+                val out = mutableListOf<CustomEqPreset>()
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val id = obj.optString("id").takeIf { it.isNotBlank() } ?: continue
+                    val name = obj.optString("name").takeIf { it.isNotBlank() } ?: continue
+                    val bandsJson = obj.optJSONArray("bands") ?: continue
+                    if (bandsJson.length() != 5) continue
+                    val bands = (0 until 5).map { idx -> bandsJson.optInt(idx, 0).coerceIn(-12, 12) }
+                    out.add(CustomEqPreset(id = id, name = name, bandsDb = bands))
+                }
+                out
+            }.getOrDefault(emptyList())
         }
     }
 }

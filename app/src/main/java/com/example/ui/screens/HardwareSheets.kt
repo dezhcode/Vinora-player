@@ -4,10 +4,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -30,8 +32,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.DragHandle
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,20 +74,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.audio.EqualizerState
 import com.example.audio.FeedbackEvent
 import com.example.audio.PlinthFeedback
 import com.example.audio.SpectrumSnapshot
+import com.example.data.CustomEqPreset
 import com.example.data.GraphicsQuality
 import com.example.data.PlaylistSummary
 import com.example.data.Track
@@ -97,12 +113,23 @@ fun QueueBottomSheet(
     queue: List<Track>,
     currentTrackId: String?,
     onSelectTrack: (Track) -> Unit,
+    onMoveItem: (Int, Int) -> Unit = { _, _ -> },
     onRemoveIndex: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val density = LocalDensity.current
+    var isDraggingItem by remember { mutableStateOf(false) }
+    var draggedTrackId by remember { mutableStateOf<String?>(null) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    val rowStepPx = with(density) { 78.dp.toPx() }
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { !isDraggingItem },
+    )
+    val latestQueue by rememberUpdatedState(queue)
+    val latestOnMove by rememberUpdatedState(onMoveItem)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -131,10 +158,13 @@ fun QueueBottomSheet(
                 )
             } else {
                 LazyColumn(
+                    userScrollEnabled = !isDraggingItem,
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.heightIn(max = 420.dp),
                 ) {
-                    itemsIndexed(queue, key = { idx, t -> "${t.id}_$idx" }) { index, track ->
+                    itemsIndexed(queue, key = { _, t -> t.id }) { index, track ->
+                        val isBeingDragged = draggedTrackId == track.id
+                        var rowMenuOpen by remember { mutableStateOf(false) }
                         CompactVinylTrackRow(
                             track = track,
                             isActive = track.id == currentTrackId,
@@ -142,21 +172,131 @@ fun QueueBottomSheet(
                                 PlinthFeedback.trigger(FeedbackEvent.PLAY_PAUSE)
                                 onSelectTrack(track)
                             },
+                            modifier = Modifier
+                                .zIndex(if (isBeingDragged) 8f else 0f)
+                                .graphicsLayer {
+                                    translationY = if (isBeingDragged) dragOffsetY else 0f
+                                    scaleX = if (isBeingDragged) 1.02f else 1f
+                                    scaleY = if (isBeingDragged) 1.02f else 1f
+                                }
+                                .testTag("queue_row_${track.id}"),
                             trailing = {
-                                if (queue.size > 1) {
-                                    IconButton(
-                                        onClick = {
-                                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
-                                            onRemoveIndex(index)
-                                        },
-                                        modifier = Modifier.size(44.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Close,
-                                            contentDescription = strings.removeFromQueue,
-                                            tint = palette.inkSecondary,
-                                            modifier = Modifier.size(18.dp),
-                                        )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (queue.size > 1) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .testTag("queue_drag_handle_${track.id}")
+                                                .pointerInput(track.id) {
+                                                    awaitEachGesture {
+                                                        val down = awaitFirstDown(requireUnconsumed = false)
+                                                        isDraggingItem = true
+                                                        draggedTrackId = track.id
+                                                        dragOffsetY = 0f
+                                                        try {
+                                                            while (true) {
+                                                                val event = awaitPointerEvent()
+                                                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                                                if (!change.pressed) {
+                                                                    change.consume()
+                                                                    break
+                                                                }
+                                                                val dy = change.position.y - change.previousPosition.y
+                                                                if (kotlin.math.abs(dy) > 0f) {
+                                                                    change.consume()
+                                                                    dragOffsetY += dy
+                                                                    val curIdx = latestQueue.indexOfFirst { it.id == track.id }
+                                                                    if (curIdx >= 0) {
+                                                                        if (dragOffsetY > rowStepPx * 0.65f && curIdx < latestQueue.lastIndex) {
+                                                                            PlinthFeedback.trigger(FeedbackEvent.SETTINGS_TICK)
+                                                                            latestOnMove(curIdx, curIdx + 1)
+                                                                            dragOffsetY -= rowStepPx
+                                                                        } else if (dragOffsetY < -rowStepPx * 0.65f && curIdx > 0) {
+                                                                            PlinthFeedback.trigger(FeedbackEvent.SETTINGS_TICK)
+                                                                            latestOnMove(curIdx, curIdx - 1)
+                                                                            dragOffsetY += rowStepPx
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        } finally {
+                                                            isDraggingItem = false
+                                                            draggedTrackId = null
+                                                            dragOffsetY = 0f
+                                                        }
+                                                    }
+                                                },
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.DragHandle,
+                                                contentDescription = strings.moreOptions,
+                                                tint = if (isBeingDragged) palette.inkPrimary else palette.inkSecondary,
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        }
+                                        Box {
+                                            IconButton(
+                                                onClick = {
+                                                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                                    rowMenuOpen = true
+                                                },
+                                                modifier = Modifier
+                                                    .size(44.dp)
+                                                    .testTag("queue_menu_${track.id}"),
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Rounded.MoreVert,
+                                                    contentDescription = strings.moreOptions,
+                                                    tint = palette.inkSecondary,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = rowMenuOpen,
+                                                onDismissRequest = { rowMenuOpen = false },
+                                                containerColor = palette.capsuleBg,
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text(strings.moveUp, color = palette.inkPrimary) },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Rounded.KeyboardArrowUp, null, tint = palette.inkPrimary)
+                                                    },
+                                                    enabled = index > 0,
+                                                    onClick = {
+                                                        rowMenuOpen = false
+                                                        PlinthFeedback.trigger(FeedbackEvent.SETTINGS_TICK)
+                                                        onMoveItem(index, index - 1)
+                                                    },
+                                                    modifier = Modifier.testTag("queue_move_up_${track.id}"),
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(strings.moveDown, color = palette.inkPrimary) },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Rounded.KeyboardArrowDown, null, tint = palette.inkPrimary)
+                                                    },
+                                                    enabled = index < queue.lastIndex,
+                                                    onClick = {
+                                                        rowMenuOpen = false
+                                                        PlinthFeedback.trigger(FeedbackEvent.SETTINGS_TICK)
+                                                        onMoveItem(index, index + 1)
+                                                    },
+                                                    modifier = Modifier.testTag("queue_move_down_${track.id}"),
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(strings.removeFromQueue, color = palette.favoriteRed) },
+                                                    leadingIcon = {
+                                                        Icon(Icons.Rounded.Close, null, tint = palette.favoriteRed)
+                                                    },
+                                                    onClick = {
+                                                        rowMenuOpen = false
+                                                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                                        onRemoveIndex(index)
+                                                    },
+                                                    modifier = Modifier.testTag("queue_remove_${track.id}"),
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             },
@@ -175,14 +315,27 @@ fun EqualizerBottomSheet(
     eqState: EqualizerState,
     spectrumFlow: StateFlow<SpectrumSnapshot>,
     hapticsEnabled: Boolean,
+    customPresets: List<CustomEqPreset> = emptyList(),
     onToggleEnabled: (Boolean) -> Unit,
     onSelectPreset: (Int) -> Unit,
     onBandChange: (Int, Int) -> Unit,
+    onSaveCustomPreset: (String) -> Unit = {},
+    onSelectCustomPreset: (String) -> Unit = {},
+    onRenameCustomPreset: (String, String) -> Unit = { _, _ -> },
+    onDeleteCustomPreset: (String) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val density = LocalDensity.current
+    var isDraggingSlider by remember { mutableStateOf(false) }
+    var showSavePresetDialog by remember { mutableStateOf(false) }
+    var presetToRename by remember { mutableStateOf<CustomEqPreset?>(null) }
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { !isDraggingSlider },
+    )
+    val scrollState = rememberScrollState()
 
     val presetNames = listOf(
         strings.presetFlat,
@@ -198,142 +351,393 @@ fun EqualizerBottomSheet(
         sheetState = sheetState,
         containerColor = palette.canvasTop,
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp, vertical = 6.dp)
-                .testTag("equalizer_sheet"),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = strings.equalizer,
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = palette.inkPrimary,
-                    )
-                    Text(
-                        text = if (eqState.hardwareAttached) strings.eqEnabled else strings.eqHardwareFallback,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = palette.inkSecondary,
-                    )
-                }
-                TactileCapsuleButton(
-                    onClick = { onSelectPreset(0) },
-                    contentDescription = strings.resetFlat,
-                    cornerRadius = 14.dp,
-                    hapticsEnabled = hapticsEnabled,
-                    feedbackEvent = FeedbackEvent.CONFIRM,
-                    modifier = Modifier
-                        .height(34.dp)
-                        .testTag("eq_reset_button"),
-                ) {
-                    Text(
-                        text = strings.resetFlat,
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = palette.inkPrimary,
-                        modifier = Modifier.padding(horizontal = 12.dp),
-                    )
-                }
-                Switch(
-                    checked = eqState.enabled,
-                    onCheckedChange = { checked ->
-                        PlinthFeedback.trigger(FeedbackEvent.TOGGLE_STATE)
-                        onToggleEnabled(checked)
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = palette.capsuleBg,
-                        checkedTrackColor = palette.inkPrimary,
-                    ),
-                    modifier = Modifier.testTag("eq_enable_switch"),
-                )
-            }
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val availableWidth = maxWidth
+            val sheetHPadding = if (availableWidth < 340.dp) 14.dp else 20.dp
+            val contentWidth = availableWidth - sheetHPadding * 2
+            val fontScale = density.fontScale
+            val minPerBand = if (fontScale >= 1.3f) 66.dp else 54.dp
+            val panelHPadding = if (contentWidth < 310.dp) 8.dp else 10.dp
+            val useSingleSliderRow = (contentWidth - panelHPadding * 2) >= (minPerBand * 5 + 4.dp * 4)
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // 1. Live Parametric Frequency-Response Curve & Acoustic Spectrum Scope (45Hz isolated)
-            EqualizerResponseScope(
-                bandLevelsDb = eqState.bandLevelsDb,
-                spectrumFlow = spectrumFlow,
-                enabled = eqState.enabled,
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 2. Live Bass / Mid / Treble Segmented Telemetry Meters (45Hz isolated)
-            EqualizerTelemetryRow(spectrumFlow = spectrumFlow)
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // 3. Hardware Preset Capsules
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                presetNames.forEachIndexed { idx, label ->
-                    val selected = eqState.enabled && eqState.presetIndex == idx
-                    TactileCapsuleButton(
-                        onClick = { onSelectPreset(idx) },
-                        contentDescription = label,
-                        cornerRadius = 16.dp,
-                        hapticsEnabled = hapticsEnabled,
-                        active = selected,
-                        feedbackEvent = FeedbackEvent.CONFIRM,
-                        modifier = Modifier.height(36.dp),
-                    ) {
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                            ),
-                            color = if (selected) palette.inkPrimary else palette.inkSecondary,
-                            modifier = Modifier.padding(horizontal = 14.dp),
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 4. 5 Tactile Vertical Studio Channel Faders (60Hz .. 14kHz, Zero-Jump Drag + Detents)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(palette.plinthBottom.copy(alpha = 0.7f), palette.capsuleBg)
-                        )
-                    )
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.verticalGradient(
-                            listOf(palette.plinthEdgeShadow.copy(alpha = 0.5f), palette.plinthEdgeLight)
-                        ),
-                        shape = RoundedCornerShape(22.dp),
-                    )
-                    .padding(horizontal = 10.dp, vertical = 14.dp),
+                    .navigationBarsPadding()
+                    .verticalScroll(scrollState, enabled = !isDraggingSlider)
+                    .padding(horizontal = sheetHPadding, vertical = 6.dp)
+                    .testTag("equalizer_sheet"),
             ) {
-                eqState.bandLabels.forEachIndexed { idx, freqLabel ->
-                    val level = eqState.bandLevelsDb.getOrElse(idx) { 0 }
-                    HardwareVerticalFader(
-                        freqLabel = freqLabel,
-                        levelDb = level,
-                        enabled = eqState.enabled,
-                        onLevelChange = { newDb -> onBandChange(idx, newDb) },
-                        modifier = Modifier.weight(1f),
+                // 1. Top Header: Title + Status + Power Switch
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("eq_header_row"),
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = strings.equalizer,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            color = palette.inkPrimary,
+                        )
+                        Text(
+                            text = if (eqState.hardwareAttached) strings.eqEnabled else strings.eqHardwareFallback,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = palette.inkSecondary,
+                        )
+                    }
+                    Switch(
+                        checked = eqState.enabled,
+                        onCheckedChange = { checked ->
+                            PlinthFeedback.trigger(FeedbackEvent.TOGGLE_STATE)
+                            onToggleEnabled(checked)
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = palette.capsuleBg,
+                            checkedTrackColor = palette.inkPrimary,
+                        ),
+                        modifier = Modifier.testTag("eq_enable_switch"),
                     )
                 }
-            }
 
-            Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 2. 5 Tactile Vertical Studio Channel Faders BEFORE charts (1 row when wide, 2 balanced rows 3+2 when constrained)
+                val panelShape = RoundedCornerShape(22.dp)
+                val faderTrackHeight = if (useSingleSliderRow) 140.dp else 112.dp
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(panelShape)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(palette.plinthBottom.copy(alpha = 0.7f), palette.capsuleBg)
+                            )
+                        )
+                        .border(
+                            width = 1.dp,
+                            brush = Brush.verticalGradient(
+                                listOf(palette.plinthEdgeShadow.copy(alpha = 0.5f), palette.plinthEdgeLight)
+                            ),
+                            shape = panelShape,
+                        )
+                        .padding(horizontal = panelHPadding, vertical = 14.dp)
+                        .testTag("eq_sliders_panel"),
+                ) {
+                    if (useSingleSliderRow) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("eq_sliders_row_0"),
+                        ) {
+                            eqState.bandLabels.forEachIndexed { idx, freqLabel ->
+                                val level = eqState.bandLevelsDb.getOrElse(idx) { 0 }
+                                HardwareVerticalFader(
+                                    bandIndex = idx,
+                                    freqLabel = freqLabel,
+                                    levelDb = level,
+                                    enabled = eqState.enabled,
+                                    trackHeight = faderTrackHeight,
+                                    onDragStateChange = { active -> isDraggingSlider = active },
+                                    onLevelChange = { newDb -> onBandChange(idx, newDb) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    } else {
+                        // Balanced 3 + 2 studio layout for narrow widths or large font scale
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("eq_sliders_row_0"),
+                        ) {
+                            for (idx in 0 until minOf(3, eqState.bandLabels.size)) {
+                                val freqLabel = eqState.bandLabels[idx]
+                                val level = eqState.bandLevelsDb.getOrElse(idx) { 0 }
+                                HardwareVerticalFader(
+                                    bandIndex = idx,
+                                    freqLabel = freqLabel,
+                                    levelDb = level,
+                                    enabled = eqState.enabled,
+                                    trackHeight = faderTrackHeight,
+                                    onDragStateChange = { active -> isDraggingSlider = active },
+                                    onLevelChange = { newDb -> onBandChange(idx, newDb) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("eq_sliders_row_1"),
+                        ) {
+                            for (idx in 3 until eqState.bandLabels.size) {
+                                val freqLabel = eqState.bandLabels[idx]
+                                val level = eqState.bandLevelsDb.getOrElse(idx) { 0 }
+                                HardwareVerticalFader(
+                                    bandIndex = idx,
+                                    freqLabel = freqLabel,
+                                    levelDb = level,
+                                    enabled = eqState.enabled,
+                                    trackHeight = faderTrackHeight,
+                                    onDragStateChange = { active -> isDraggingSlider = active },
+                                    onLevelChange = { newDb -> onBandChange(idx, newDb) },
+                                    modifier = Modifier.widthIn(min = 76.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 3. Hardware Preset Capsules + Reset + Save Custom Preset (wrap cleanly to content + padding)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("eq_presets_flow"),
+                ) {
+                    presetNames.forEachIndexed { idx, label ->
+                        val selected = eqState.enabled && eqState.activeCustomPresetId == null && eqState.presetIndex == idx
+                        TactileCapsuleButton(
+                            onClick = { onSelectPreset(idx) },
+                            contentDescription = label,
+                            cornerRadius = 16.dp,
+                            hapticsEnabled = hapticsEnabled,
+                            active = selected,
+                            feedbackEvent = FeedbackEvent.CONFIRM,
+                            modifier = Modifier
+                                .heightIn(min = 38.dp)
+                                .testTag("eq_preset_$idx"),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                ),
+                                color = if (selected) palette.inkPrimary else palette.inkSecondary,
+                                maxLines = 2,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            )
+                        }
+                    }
+
+                    TactileCapsuleButton(
+                        onClick = { onSelectPreset(0) },
+                        contentDescription = strings.resetFlat,
+                        cornerRadius = 16.dp,
+                        hapticsEnabled = hapticsEnabled,
+                        feedbackEvent = FeedbackEvent.CONFIRM,
+                        modifier = Modifier
+                            .heightIn(min = 38.dp)
+                            .testTag("eq_reset_button"),
+                    ) {
+                        Text(
+                            text = strings.resetFlat,
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = palette.inkPrimary,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                        )
+                    }
+
+                    TactileCapsuleButton(
+                        onClick = {
+                            presetToRename = null
+                            showSavePresetDialog = !showSavePresetDialog
+                        },
+                        contentDescription = strings.savePreset,
+                        cornerRadius = 16.dp,
+                        hapticsEnabled = hapticsEnabled,
+                        active = showSavePresetDialog,
+                        feedbackEvent = FeedbackEvent.TAP_SUBTLE,
+                        modifier = Modifier
+                            .heightIn(min = 38.dp)
+                            .testTag("eq_save_preset_button"),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.BookmarkAdd,
+                                contentDescription = null,
+                                tint = palette.inkPrimary,
+                                modifier = Modifier.size(15.dp),
+                            )
+                            Text(
+                                text = strings.savePreset,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = palette.inkPrimary,
+                                maxLines = 2,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
+                }
+
+                if (showSavePresetDialog) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    EqPresetNameEditor(
+                        title = strings.savePreset,
+                        initialName = "",
+                        confirmLabel = strings.save,
+                        inputTag = "eq_preset_name_input",
+                        confirmTag = "eq_preset_save_confirm",
+                        onConfirm = { name ->
+                            onSaveCustomPreset(name)
+                            showSavePresetDialog = false
+                        },
+                        onDismiss = { showSavePresetDialog = false },
+                    )
+                }
+
+                val editingPreset = presetToRename
+                if (editingPreset != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    EqPresetNameEditor(
+                        title = strings.renamePreset,
+                        initialName = editingPreset.name,
+                        confirmLabel = strings.save,
+                        inputTag = "eq_preset_rename_input",
+                        confirmTag = "eq_preset_rename_confirm",
+                        onConfirm = { newName ->
+                            onRenameCustomPreset(editingPreset.id, newName)
+                            presetToRename = null
+                        },
+                        onDismiss = { presetToRename = null },
+                    )
+                }
+
+                // 3b. User Custom Presets (Save / Select / Rename / Delete)
+                if (customPresets.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = strings.customPresets,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = palette.inkSecondary,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("eq_custom_presets_flow"),
+                    ) {
+                        customPresets.forEach { custom ->
+                            val selected = eqState.enabled && eqState.activeCustomPresetId == custom.id
+                            var menuOpen by remember(custom.id) { mutableStateOf(false) }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                TactileCapsuleButton(
+                                    onClick = { onSelectCustomPreset(custom.id) },
+                                    contentDescription = custom.name,
+                                    cornerRadius = 16.dp,
+                                    hapticsEnabled = hapticsEnabled,
+                                    active = selected,
+                                    feedbackEvent = FeedbackEvent.CONFIRM,
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .testTag("eq_custom_preset_${custom.id}"),
+                                ) {
+                                    Text(
+                                        text = custom.name,
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        ),
+                                        color = if (selected) palette.inkPrimary else palette.inkSecondary,
+                                        maxLines = 2,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                                    )
+                                }
+                                Box {
+                                    IconButton(
+                                        onClick = {
+                                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                            menuOpen = true
+                                        },
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .testTag("eq_custom_menu_${custom.id}"),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.MoreVert,
+                                            contentDescription = strings.moreOptions,
+                                            tint = palette.inkSecondary,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                    DropdownMenu(
+                                        expanded = menuOpen,
+                                        onDismissRequest = { menuOpen = false },
+                                        containerColor = palette.capsuleBg,
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text(strings.rename, color = palette.inkPrimary) },
+                                            leadingIcon = {
+                                                Icon(Icons.Rounded.Edit, null, tint = palette.inkPrimary)
+                                            },
+                                            onClick = {
+                                                menuOpen = false
+                                                showSavePresetDialog = false
+                                                presetToRename = custom
+                                            },
+                                            modifier = Modifier.testTag("eq_custom_rename_${custom.id}"),
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text(strings.delete, color = palette.favoriteRed) },
+                                            leadingIcon = {
+                                                Icon(Icons.Rounded.DeleteOutline, null, tint = palette.favoriteRed)
+                                            },
+                                            onClick = {
+                                                menuOpen = false
+                                                PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                                onDeleteCustomPreset(custom.id)
+                                            },
+                                            modifier = Modifier.testTag("eq_custom_delete_${custom.id}"),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // 4. Live Parametric Frequency-Response Curve & Acoustic Spectrum Scope (45Hz isolated)
+                EqualizerResponseScope(
+                    bandLevelsDb = eqState.bandLevelsDb,
+                    spectrumFlow = spectrumFlow,
+                    enabled = eqState.enabled,
+                    modifier = Modifier.testTag("eq_response_scope"),
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 5. Live Bass / Mid / Treble Segmented Telemetry Meters (45Hz isolated)
+                EqualizerTelemetryRow(
+                    spectrumFlow = spectrumFlow,
+                    modifier = Modifier.testTag("eq_telemetry_row"),
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+            }
         }
     }
 }
@@ -341,6 +745,7 @@ fun EqualizerBottomSheet(
 @Composable
 private fun EqualizerTelemetryRow(
     spectrumFlow: StateFlow<SpectrumSnapshot>,
+    modifier: Modifier = Modifier,
 ) {
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
@@ -348,7 +753,7 @@ private fun EqualizerTelemetryRow(
 
     Row(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
             .background(palette.capsuleBg)
@@ -366,6 +771,7 @@ private fun EqualizerResponseScope(
     bandLevelsDb: List<Int>,
     spectrumFlow: StateFlow<SpectrumSnapshot>,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     val palette = LocalPlinthColors.current
     val spectrum by spectrumFlow.collectAsStateWithLifecycle()
@@ -374,7 +780,7 @@ private fun EqualizerResponseScope(
     val scopeBgBottom = if (palette.isDark) Color(0xFF151922) else Color(0xFF232833)
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(116.dp)
             .clip(scopeShape)
@@ -497,6 +903,7 @@ private fun EqualizerResponseScope(
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = DigitalMonoFontFamily,
                         fontSize = 8.5.sp,
+                        textDirection = TextDirection.Ltr,
                     ),
                     color = Color.White.copy(alpha = 0.45f),
                 )
@@ -507,9 +914,12 @@ private fun EqualizerResponseScope(
 
 @Composable
 private fun HardwareVerticalFader(
+    bandIndex: Int,
     freqLabel: String,
     levelDb: Int,
     enabled: Boolean,
+    trackHeight: Dp,
+    onDragStateChange: (Boolean) -> Unit,
     onLevelChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -519,6 +929,7 @@ private fun HardwareVerticalFader(
     val padVPx = with(density) { 12.dp.toPx() }
     val currentLevel by rememberUpdatedState(levelDb)
     val currentOnLevelChange by rememberUpdatedState(onLevelChange)
+    val currentOnDragStateChange by rememberUpdatedState(onDragStateChange)
 
     val fractionFromTop = ((12f - levelDb.coerceIn(-12, 12)) / 24f).coerceIn(0f, 1f)
 
@@ -538,16 +949,23 @@ private fun HardwareVerticalFader(
         return nextDb
     }
 
+    val dbText = when {
+        levelDb > 0 -> "+$levelDb"
+        levelDb < 0 -> "-${kotlin.math.abs(levelDb)}"
+        else -> "0"
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier,
     ) {
         Text(
-            text = if (levelDb > 0) "+${levelDb}" else "$levelDb",
+            text = dbText,
             style = MaterialTheme.typography.labelMedium.copy(
                 fontFamily = DigitalMonoFontFamily,
                 fontSize = 11.sp,
                 fontWeight = if (levelDb != 0 && enabled) FontWeight.Bold else FontWeight.Medium,
+                textDirection = TextDirection.Ltr,
             ),
             color = when {
                 !enabled -> palette.inkMuted
@@ -556,6 +974,8 @@ private fun HardwareVerticalFader(
                 else -> palette.inkSecondary
             },
             textAlign = TextAlign.Center,
+            maxLines = 1,
+            modifier = Modifier.testTag("eq_db_$bandIndex"),
         )
 
         Spacer(modifier = Modifier.height(6.dp))
@@ -563,37 +983,52 @@ private fun HardwareVerticalFader(
         Box(
             contentAlignment = Alignment.TopCenter,
             modifier = Modifier
-                .width(48.dp)
-                .height(142.dp)
+                .width(50.dp)
+                .widthIn(min = 48.dp)
+                .height(trackHeight)
+                .testTag("eq_slider_$bandIndex")
                 .onSizeChanged { trackHeightPx = it.height }
                 .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
-                    detectTapGestures { offset ->
-                        val nextDb = mapYToDb(offset.y)
-                        emitNotchIfChanged(currentLevel, nextDb)
-                    }
-                }
-                .pointerInput(enabled) {
-                    if (!enabled) return@pointerInput
-                    var startFraction = 0.5f
-                    var totalDeltaY = 0f
-                    var lastEmitted = currentLevel
-                    detectVerticalDragGestures(
-                        onDragStart = {
-                            // Zero-jump drag: anchor to the knob's current position when touch begins
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        currentOnDragStateChange(true)
+                        try {
+                            val slop = viewConfiguration.touchSlop
+                            var dragStarted = false
                             val anchored = currentLevel.coerceIn(-12, 12)
-                            startFraction = ((12f - anchored) / 24f).coerceIn(0f, 1f)
-                            totalDeltaY = 0f
-                            lastEmitted = anchored
-                        },
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            totalDeltaY += dragAmount
-                            val nextFrac = (startFraction + totalDeltaY / usableHeightPx()).coerceIn(0f, 1f)
-                            val nextDb = (12f - nextFrac * 24f).roundToInt().coerceIn(-12, 12)
-                            lastEmitted = emitNotchIfChanged(lastEmitted, nextDb)
-                        },
-                    )
+                            val startFraction = ((12f - anchored) / 24f).coerceIn(0f, 1f)
+                            var lastEmitted = anchored
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    change.consume()
+                                    if (!dragStarted) {
+                                        val nextDb = mapYToDb(change.position.y)
+                                        emitNotchIfChanged(currentLevel, nextDb)
+                                    }
+                                    break
+                                }
+                                val movedY = kotlin.math.abs(change.position.y - down.position.y)
+                                if (!dragStarted && movedY > slop * 0.4f) {
+                                    dragStarted = true
+                                }
+                                if (dragStarted || kotlin.math.abs(change.position.y - change.previousPosition.y) > 0f) {
+                                    change.consume()
+                                }
+                                if (dragStarted) {
+                                    val totalDy = change.position.y - down.position.y
+                                    val nextFrac = (startFraction + totalDy / usableHeightPx()).coerceIn(0f, 1f)
+                                    val nextDb = (12f - nextFrac * 24f).roundToInt().coerceIn(-12, 12)
+                                    lastEmitted = emitNotchIfChanged(lastEmitted, nextDb)
+                                }
+                            }
+                        } finally {
+                            currentOnDragStateChange(false)
+                        }
+                    }
                 },
         ) {
             // Engraved fader track + tick marks + active boost/cut bar
@@ -685,9 +1120,12 @@ private fun HardwareVerticalFader(
             style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = DigitalMonoFontFamily,
                 fontSize = 9.5.sp,
+                textDirection = TextDirection.Ltr,
             ),
             color = palette.inkSecondary,
             maxLines = 1,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.testTag("eq_freq_$bandIndex"),
         )
     }
 }
@@ -760,6 +1198,7 @@ fun SettingsBottomSheet(
     onSetGraphicsQuality: (GraphicsQuality) -> Unit,
     onSetBatterySaver: (Boolean) -> Unit,
     onSetReducedMotion: (Boolean) -> Unit,
+    onSetCrossfade: (Boolean) -> Unit = {},
     onImportAudio: () -> Unit,
     onScanDevice: () -> Unit,
     onDismiss: () -> Unit,
@@ -918,20 +1357,26 @@ fun SettingsBottomSheet(
                             hapticsEnabled = preferences.hapticsEnabled,
                             active = (mins == 0 && sleepTimerRemainingMs == 0L),
                             feedbackEvent = FeedbackEvent.SETTINGS_TICK,
-                            modifier = Modifier.height(38.dp),
+                            modifier = Modifier.heightIn(min = 38.dp),
                         ) {
                             Text(
                                 text = label,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = palette.inkPrimary,
-                                modifier = Modifier.padding(horizontal = 14.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
                             )
                         }
                     }
                 }
             }
 
-            // Haptics, Mechanical UI Sounds, Battery Saver & Reduced Motion Toggles
+            // Playback Crossfade, Haptics, Mechanical UI Sounds, Battery Saver & Reduced Motion Toggles
+            SettingsToggleRow(
+                label = strings.crossfade,
+                checked = preferences.crossfadeEnabled,
+                onCheckedChange = onSetCrossfade,
+                testTag = "toggle_crossfade",
+            )
             SettingsToggleRow(
                 label = strings.haptics,
                 checked = preferences.hapticsEnabled,
@@ -1141,4 +1586,71 @@ fun AddToPlaylistDialog(
             }
         },
     )
+}
+
+@Composable
+private fun EqPresetNameEditor(
+    title: String,
+    initialName: String,
+    confirmLabel: String,
+    inputTag: String,
+    confirmTag: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val palette = LocalPlinthColors.current
+    val strings = LocalAppStrings.current
+    var name by remember(initialName, title) { mutableStateOf(initialName) }
+    val cardShape = RoundedCornerShape(18.dp)
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(cardShape)
+            .background(palette.capsuleBg)
+            .border(1.dp, palette.hairline, cardShape)
+            .padding(12.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = palette.inkPrimary,
+        )
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            placeholder = { Text(strings.presetNameHint, color = palette.inkSecondary) },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(inputTag),
+        )
+        Row(
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            TextButton(
+                onClick = {
+                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                    onDismiss()
+                },
+            ) {
+                Text(strings.cancel, color = palette.inkSecondary)
+            }
+            TextButton(
+                onClick = {
+                    val trimmed = name.trim()
+                    if (trimmed.isNotBlank()) {
+                        PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
+                        onConfirm(trimmed)
+                    }
+                },
+                modifier = Modifier.testTag(confirmTag),
+            ) {
+                Text(confirmLabel, color = palette.inkPrimary, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
 }
