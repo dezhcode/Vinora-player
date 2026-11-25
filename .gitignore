@@ -16,3 +16,6 @@
 local.properties
 .env
 debug.keystore
+tools/turntable-asset-generator/node_modules/
+tools/turntable-asset-generator/output/
+

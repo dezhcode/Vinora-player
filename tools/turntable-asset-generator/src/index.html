@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Plinth 3D Pre-Render Asset Studio</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/node_modules/three/build/three.module.js"
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #14171d;
+      color: #eef2f8;
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      min-height: 100vh;
+    }
+    aside {
+      padding: 20px;
+      border-right: 1px solid #262c38;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    h1 { font-size: 16px; letter-spacing: 0.4px; }
+    p { font-size: 12px; color: #9aa4b6; line-height: 1.5; }
+    label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #c9d1df; }
+    select, input[type="range"], button {
+      background: #1e232d;
+      color: #eef2f8;
+      border: 1px solid #303848;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+    button { cursor: pointer; font-weight: 600; background: #2c3547; }
+    button:hover { background: #384359; }
+    pre {
+      font-size: 11px;
+      background: #0d1015;
+      border: 1px solid #232934;
+      border-radius: 8px;
+      padding: 10px;
+      overflow: auto;
+      max-height: 260px;
+      color: #a9b7cf;
+    }
+    main {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: radial-gradient(circle at center, #252b36 0%, #14171d 70%);
+    }
+    canvas {
+      width: min(76vmin, 720px);
+      height: min(76vmin, 720px);
+      border-radius: 16px;
+      background-image:
+        linear-gradient(45deg, #202530 25%, transparent 25%),
+        linear-gradient(-45deg, #202530 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #202530 75%),
+        linear-gradient(-45deg, transparent 75%, #202530 75%);
+      background-size: 24px 24px;
+      background-position: 0 0, 0 12px, 12px -12px, -12px 0;
+    }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>Plinth 3D Asset Generator</h1>
+    <p>Build-time Three.js PBR studio renderer. Not bundled into the Android APK.</p>
+    <label>
+      Theme
+      <select id="themeSelect">
+        <option value="light">Studio Light (Reference)</option>
+        <option value="dark">Anodized Dark Titanium</option>
+      </select>
+    </label>
+    <label>
+      Layer Pass
+      <select id="layerSelect">
+        <option value="composite">Full Composite</option>
+        <option value="turntable_base">turntable_base</option>
+        <option value="metal_platter">metal_platter</option>
+        <option value="vinyl_record">vinyl_record</option>
+        <option value="vinyl_reflection">vinyl_reflection</option>
+        <option value="center_spindle">center_spindle</option>
+        <option value="left_knob_normal">left_knob_normal</option>
+        <option value="left_knob_pressed">left_knob_pressed</option>
+        <option value="right_knob_normal">right_knob_normal</option>
+        <option value="right_knob_pressed">right_knob_pressed</option>
+        <option value="tonearm_arm">tonearm_arm</option>
+        <option value="tonearm_shadow">tonearm_shadow</option>
+      </select>
+    </label>
+    <label>
+      Tonearm Angle (<span id="angleVal">-19.1</span> deg)
+      <input id="angleSlider" type="range" min="-42" max="-12" step="0.2" value="-19.07" />
+    </label>
+    <button id="downloadPngBtn">Download Current Layer PNG</button>
+    <button id="downloadJsonBtn">Download turntable-layout.json</button>
+    <pre id="manifestOut"></pre>
+  </aside>
+  <main>
+    <canvas id="render-canvas" width="1024" height="1024"></canvas>
+  </main>
+
+  <script type="module">
+    import { createTurntableExporter } from './exporter.js';
+
+    const canvas = document.getElementById('render-canvas');
+    const themeSelect = document.getElementById('themeSelect');
+    const layerSelect = document.getElementById('layerSelect');
+    const angleSlider = document.getElementById('angleSlider');
+    const angleVal = document.getElementById('angleVal');
+    const manifestOut = document.getElementById('manifestOut');
+
+    let activeExporter = null;
+
+    function rebuildExporter(size = 1024) {
+      if (activeExporter) activeExporter.dispose();
+      canvas.width = size;
+      canvas.height = size;
+      activeExporter = createTurntableExporter({
+        canvas,
+        width: size,
+        height: size,
+        isDark: themeSelect.value === 'dark',
+      });
+      const manifest = activeExporter.extractManifest();
+      manifestOut.textContent = JSON.stringify(manifest, null, 2);
+      renderCurrent();
+    }
+
+    function renderCurrent() {
+      if (!activeExporter) return;
+      const deg = Number(angleSlider.value);
+      angleVal.textContent = deg.toFixed(1);
+      if (layerSelect.value === 'composite') {
+        activeExporter.renderCompositePngDataUrl(deg, null);
+      } else {
+        activeExporter.renderLayerPngDataUrl(layerSelect.value, deg);
+      }
+    }
+
+    themeSelect.addEventListener('change', () => rebuildExporter(1024));
+    layerSelect.addEventListener('change', renderCurrent);
+    angleSlider.addEventListener('input', renderCurrent);
+
+    document.getElementById('downloadPngBtn').addEventListener('click', () => {
+      const deg = Number(angleSlider.value);
+      const url = layerSelect.value === 'composite'
+        ? activeExporter.renderCompositePngDataUrl(deg, null)
+        : activeExporter.renderLayerPngDataUrl(layerSelect.value, deg);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${themeSelect.value}_${layerSelect.value}.png`;
+      a.click();
+    });
+
+    document.getElementById('downloadJsonBtn').addEventListener('click', () => {
+      const blob = new Blob([manifestOut.textContent], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'turntable-layout.json';
+      a.click();
+    });
+
+    // Global hook used by headless Playwright generator CLI (`generate.mjs`)
+    window.__PLINTH_GENERATOR__ = {
+      init(size, isDark) {
+        if (activeExporter) activeExporter.dispose();
+        canvas.width = size;
+        canvas.height = size;
+        activeExporter = createTurntableExporter({ canvas, width: size, height: size, isDark });
+        return activeExporter.extractManifest();
+      },
+      renderLayer(passName, armDeg) {
+        return activeExporter.renderLayerPngDataUrl(passName, armDeg);
+      },
+      renderComposite(armDeg, bgHex = null) {
+        return activeExporter.renderCompositePngDataUrl(armDeg, bgHex);
+      },
+      dispose() {
+        if (activeExporter) {
+          activeExporter.dispose();
+          activeExporter = null;
+        }
+      },
+    };
+
+    // Only auto-init when opened interactively in browser (CLI calls __PLINTH_GENERATOR__.init(4096, ...))
+    if (!navigator.webdriver) {
+      rebuildExporter(1024);
+    }
+  </script>
+</body>
+</html>
