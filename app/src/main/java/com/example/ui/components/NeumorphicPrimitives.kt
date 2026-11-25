@@ -36,15 +36,15 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.ui.theme.LocalPlinthColors
 
 /**
@@ -108,10 +108,10 @@ fun TactileRoundButton(
     size: Dp = 68.dp,
     hapticsEnabled: Boolean = true,
     active: Boolean = false,
+    feedbackEvent: FeedbackEvent = FeedbackEvent.PLAY_PAUSE,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalPlinthColors.current
-    val haptic = LocalHapticFeedback.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
@@ -178,7 +178,7 @@ fun TactileRoundButton(
                 indication = null,
                 role = Role.Button,
             ) {
-                if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                PlinthFeedback.trigger(feedbackEvent)
                 onClick()
             },
     ) {
@@ -228,10 +228,10 @@ fun TactileCapsuleButton(
     cornerRadius: Dp = 28.dp,
     hapticsEnabled: Boolean = true,
     active: Boolean = false,
+    feedbackEvent: FeedbackEvent = FeedbackEvent.TAP_SUBTLE,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val palette = LocalPlinthColors.current
-    val haptic = LocalHapticFeedback.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
@@ -283,7 +283,7 @@ fun TactileCapsuleButton(
                 indication = null,
                 role = Role.Button,
             ) {
-                if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                PlinthFeedback.trigger(feedbackEvent)
                 onClick()
             },
     ) {

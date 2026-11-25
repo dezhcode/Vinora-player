@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.data.Track
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
@@ -57,6 +59,7 @@ fun FloatingMiniPlayer(
     isPlaying: Boolean,
     progressFraction: Float,
     hapticsEnabled: Boolean,
+    batterySaverMode: Boolean,
     reducedMotion: Boolean,
     onTogglePlayPause: () -> Unit,
     onExpand: () -> Unit,
@@ -68,8 +71,8 @@ fun FloatingMiniPlayer(
     var discAngle by remember { mutableFloatStateOf(0f) }
     var dragAccum by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(isPlaying, reducedMotion, lifecycleOwner) {
-        if (!isPlaying) return@LaunchedEffect
+    LaunchedEffect(isPlaying, reducedMotion, batterySaverMode, lifecycleOwner) {
+        if (!isPlaying || batterySaverMode) return@LaunchedEffect
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             var last = 0L
             while (true) {
@@ -115,12 +118,16 @@ fun FloatingMiniPlayer(
                         dragAccum += dragAmount
                         if (dragAccum < -42f) {
                             dragAccum = 0f
+                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                             onExpand()
                         }
                     },
                 )
             }
-            .clickable { onExpand() },
+            .clickable {
+                PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                onExpand()
+            },
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

@@ -42,6 +42,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.data.Track
 import com.example.ui.components.CircularArtworkDisc
 import com.example.ui.components.MorphingPlayPauseIcon
@@ -113,7 +115,10 @@ fun HomeScreen(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     IconButton(
-                        onClick = onOpenSearch,
+                        onClick = {
+                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                            onOpenSearch()
+                        },
                         modifier = Modifier
                             .size(48.dp)
                             .testTag("home_search_button"),
@@ -125,7 +130,10 @@ fun HomeScreen(
                         )
                     }
                     IconButton(
-                        onClick = onOpenSettings,
+                        onClick = {
+                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                            onOpenSettings()
+                        },
                         modifier = Modifier
                             .size(48.dp)
                             .testTag("home_settings_button"),
@@ -168,7 +176,10 @@ fun HomeScreen(
                                 Brush.linearGradient(listOf(palette.plinthTop, palette.plinthBottom))
                             )
                             .border(1.dp, palette.plinthEdgeLight.copy(alpha = 0.75f), shape)
-                            .clickable { onOpenNowPlaying() }
+                            .clickable {
+                                PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                onOpenNowPlaying()
+                            }
                             .padding(16.dp),
                     ) {
                         // Mini obsidian platter + cover label
@@ -301,7 +312,10 @@ fun HomeScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
                                     .width(86.dp)
-                                    .clickable { onPlayTrack(track, shelfTracks) },
+                                    .clickable {
+                                        PlinthFeedback.trigger(FeedbackEvent.PLAY_PAUSE)
+                                        onPlayTrack(track, shelfTracks)
+                                    },
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -360,7 +374,10 @@ fun HomeScreen(
                 CompactVinylTrackRow(
                     track = track,
                     isActive = track.id == currentTrack?.id,
-                    onClick = { onPlayTrack(track, favoriteTracks) },
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.PLAY_PAUSE)
+                        onPlayTrack(track, favoriteTracks)
+                    },
                     modifier = Modifier.padding(horizontal = 20.dp),
                 )
             }

@@ -45,9 +45,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,18 +63,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.audio.EqualizerState
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.audio.SpectrumSnapshot
+import com.example.data.GraphicsQuality
 import com.example.data.PlaylistSummary
 import com.example.data.Track
 import com.example.data.UserPreferences
@@ -83,6 +88,7 @@ import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
 import com.example.ui.theme.ThemeMode
 import com.example.viewmodel.formatDuration
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -132,11 +138,17 @@ fun QueueBottomSheet(
                         CompactVinylTrackRow(
                             track = track,
                             isActive = track.id == currentTrackId,
-                            onClick = { onSelectTrack(track) },
+                            onClick = {
+                                PlinthFeedback.trigger(FeedbackEvent.PLAY_PAUSE)
+                                onSelectTrack(track)
+                            },
                             trailing = {
                                 if (queue.size > 1) {
                                     IconButton(
-                                        onClick = { onRemoveIndex(index) },
+                                        onClick = {
+                                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                            onRemoveIndex(index)
+                                        },
                                         modifier = Modifier.size(44.dp),
                                     ) {
                                         Icon(
@@ -161,7 +173,7 @@ fun QueueBottomSheet(
 @Composable
 fun EqualizerBottomSheet(
     eqState: EqualizerState,
-    spectrum: SpectrumSnapshot,
+    spectrumFlow: StateFlow<SpectrumSnapshot>,
     hapticsEnabled: Boolean,
     onToggleEnabled: (Boolean) -> Unit,
     onSelectPreset: (Int) -> Unit,
@@ -196,7 +208,7 @@ fun EqualizerBottomSheet(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(modifier = Modifier.weight(1f)) {
@@ -211,9 +223,29 @@ fun EqualizerBottomSheet(
                         color = palette.inkSecondary,
                     )
                 }
+                TactileCapsuleButton(
+                    onClick = { onSelectPreset(0) },
+                    contentDescription = strings.resetFlat,
+                    cornerRadius = 14.dp,
+                    hapticsEnabled = hapticsEnabled,
+                    feedbackEvent = FeedbackEvent.CONFIRM,
+                    modifier = Modifier
+                        .height(34.dp)
+                        .testTag("eq_reset_button"),
+                ) {
+                    Text(
+                        text = strings.resetFlat,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = palette.inkPrimary,
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                }
                 Switch(
                     checked = eqState.enabled,
-                    onCheckedChange = onToggleEnabled,
+                    onCheckedChange = { checked ->
+                        PlinthFeedback.trigger(FeedbackEvent.TOGGLE_STATE)
+                        onToggleEnabled(checked)
+                    },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = palette.capsuleBg,
                         checkedTrackColor = palette.inkPrimary,
@@ -224,29 +256,17 @@ fun EqualizerBottomSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 1. Live Parametric Frequency-Response Curve & Acoustic Spectrum Scope
+            // 1. Live Parametric Frequency-Response Curve & Acoustic Spectrum Scope (45Hz isolated)
             EqualizerResponseScope(
                 bandLevelsDb = eqState.bandLevelsDb,
-                spectrum = spectrum,
+                spectrumFlow = spectrumFlow,
                 enabled = eqState.enabled,
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 2. Live Bass / Mid / Treble Segmented Telemetry Meters
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(palette.capsuleBg)
-                    .border(1.dp, palette.hairline, RoundedCornerShape(18.dp))
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-            ) {
-                BandMeter(strings.bass, spectrum.bass, Modifier.weight(1f))
-                BandMeter(strings.mid, spectrum.mid, Modifier.weight(1f))
-                BandMeter(strings.treble, spectrum.treble, Modifier.weight(1f))
-            }
+            // 2. Live Bass / Mid / Treble Segmented Telemetry Meters (45Hz isolated)
+            EqualizerTelemetryRow(spectrumFlow = spectrumFlow)
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -264,6 +284,7 @@ fun EqualizerBottomSheet(
                         cornerRadius = 16.dp,
                         hapticsEnabled = hapticsEnabled,
                         active = selected,
+                        feedbackEvent = FeedbackEvent.CONFIRM,
                         modifier = Modifier.height(36.dp),
                     ) {
                         Text(
@@ -280,7 +301,7 @@ fun EqualizerBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 4. 5 Tactile Vertical Studio Channel Faders (60Hz .. 14kHz)
+            // 4. 5 Tactile Vertical Studio Channel Faders (60Hz .. 14kHz, Zero-Jump Drag + Detents)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
@@ -306,7 +327,6 @@ fun EqualizerBottomSheet(
                         freqLabel = freqLabel,
                         levelDb = level,
                         enabled = eqState.enabled,
-                        hapticsEnabled = hapticsEnabled,
                         onLevelChange = { newDb -> onBandChange(idx, newDb) },
                         modifier = Modifier.weight(1f),
                     )
@@ -319,12 +339,36 @@ fun EqualizerBottomSheet(
 }
 
 @Composable
+private fun EqualizerTelemetryRow(
+    spectrumFlow: StateFlow<SpectrumSnapshot>,
+) {
+    val palette = LocalPlinthColors.current
+    val strings = LocalAppStrings.current
+    val spectrum by spectrumFlow.collectAsStateWithLifecycle()
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(palette.capsuleBg)
+            .border(1.dp, palette.hairline, RoundedCornerShape(18.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        BandMeter(strings.bass, spectrum.bass, Modifier.weight(1f))
+        BandMeter(strings.mid, spectrum.mid, Modifier.weight(1f))
+        BandMeter(strings.treble, spectrum.treble, Modifier.weight(1f))
+    }
+}
+
+@Composable
 private fun EqualizerResponseScope(
     bandLevelsDb: List<Int>,
-    spectrum: SpectrumSnapshot,
+    spectrumFlow: StateFlow<SpectrumSnapshot>,
     enabled: Boolean,
 ) {
     val palette = LocalPlinthColors.current
+    val spectrum by spectrumFlow.collectAsStateWithLifecycle()
     val scopeShape = RoundedCornerShape(20.dp)
     val scopeBgTop = if (palette.isDark) Color(0xFF0E1015) else Color(0xFF1A1E26)
     val scopeBgBottom = if (palette.isDark) Color(0xFF151922) else Color(0xFF232833)
@@ -466,20 +510,32 @@ private fun HardwareVerticalFader(
     freqLabel: String,
     levelDb: Int,
     enabled: Boolean,
-    hapticsEnabled: Boolean,
     onLevelChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val palette = LocalPlinthColors.current
-    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
     var trackHeightPx by remember { mutableIntStateOf(1) }
+    val padVPx = with(density) { 12.dp.toPx() }
+    val currentLevel by rememberUpdatedState(levelDb)
+    val currentOnLevelChange by rememberUpdatedState(onLevelChange)
 
     val fractionFromTop = ((12f - levelDb.coerceIn(-12, 12)) / 24f).coerceIn(0f, 1f)
 
+    fun usableHeightPx(): Float = (trackHeightPx.toFloat() - padVPx * 2f).coerceAtLeast(1f)
+
     fun mapYToDb(yPx: Float): Int {
-        val h = trackHeightPx.coerceAtLeast(1).toFloat()
-        val frac = (yPx / h).coerceIn(0f, 1f)
+        val frac = ((yPx - padVPx) / usableHeightPx()).coerceIn(0f, 1f)
         return (12f - frac * 24f).roundToInt().coerceIn(-12, 12)
+    }
+
+    fun emitNotchIfChanged(prevDb: Int, nextDb: Int): Int {
+        if (nextDb != prevDb) {
+            val major = nextDb == 0 || nextDb == -6 || nextDb == 6 || nextDb == -12 || nextDb == 12
+            PlinthFeedback.triggerSliderDetent(isMajorNotch = major)
+            currentOnLevelChange(nextDb)
+        }
+        return nextDb
     }
 
     Column(
@@ -510,33 +566,32 @@ private fun HardwareVerticalFader(
                 .width(48.dp)
                 .height(142.dp)
                 .onSizeChanged { trackHeightPx = it.height }
-                .pointerInput(enabled, levelDb) {
+                .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
                     detectTapGestures { offset ->
                         val nextDb = mapYToDb(offset.y)
-                        if (nextDb != levelDb) {
-                            if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onLevelChange(nextDb)
-                        }
+                        emitNotchIfChanged(currentLevel, nextDb)
                     }
                 }
                 .pointerInput(enabled) {
                     if (!enabled) return@pointerInput
-                    var lastEmitted = levelDb
+                    var startFraction = 0.5f
+                    var totalDeltaY = 0f
+                    var lastEmitted = currentLevel
                     detectVerticalDragGestures(
-                        onDragStart = { start ->
-                            val nextDb = mapYToDb(start.y)
-                            lastEmitted = nextDb
-                            onLevelChange(nextDb)
+                        onDragStart = {
+                            // Zero-jump drag: anchor to the knob's current position when touch begins
+                            val anchored = currentLevel.coerceIn(-12, 12)
+                            startFraction = ((12f - anchored) / 24f).coerceIn(0f, 1f)
+                            totalDeltaY = 0f
+                            lastEmitted = anchored
                         },
-                        onVerticalDrag = { change, _ ->
+                        onVerticalDrag = { change, dragAmount ->
                             change.consume()
-                            val nextDb = mapYToDb(change.position.y)
-                            if (nextDb != lastEmitted) {
-                                lastEmitted = nextDb
-                                if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onLevelChange(nextDb)
-                            }
+                            totalDeltaY += dragAmount
+                            val nextFrac = (startFraction + totalDeltaY / usableHeightPx()).coerceIn(0f, 1f)
+                            val nextDb = (12f - nextFrac * 24f).roundToInt().coerceIn(-12, 12)
+                            lastEmitted = emitNotchIfChanged(lastEmitted, nextDb)
                         },
                     )
                 },
@@ -701,6 +756,9 @@ fun SettingsBottomSheet(
     onSetLanguage: (AppLanguage) -> Unit,
     onSetSleepTimerMinutes: (Int) -> Unit,
     onSetHaptics: (Boolean) -> Unit,
+    onSetUiSounds: (Boolean) -> Unit,
+    onSetGraphicsQuality: (GraphicsQuality) -> Unit,
+    onSetBatterySaver: (Boolean) -> Unit,
     onSetReducedMotion: (Boolean) -> Unit,
     onImportAudio: () -> Unit,
     onScanDevice: () -> Unit,
@@ -746,10 +804,46 @@ fun SettingsBottomSheet(
                             cornerRadius = 16.dp,
                             hapticsEnabled = preferences.hapticsEnabled,
                             active = active,
+                            feedbackEvent = FeedbackEvent.SETTINGS_TICK,
                             modifier = Modifier
                                 .weight(1f)
                                 .height(42.dp)
                                 .testTag("theme_${mode.name.lowercase()}"),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                ),
+                                color = if (active) palette.inkPrimary else palette.inkSecondary,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 3D Graphics Quality (Auto / High / Medium / Low)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(strings.graphicsQuality, style = MaterialTheme.typography.labelLarge, color = palette.inkSecondary)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    listOf(
+                        GraphicsQuality.AUTO to strings.qualityAuto,
+                        GraphicsQuality.HIGH to strings.qualityHigh,
+                        GraphicsQuality.MEDIUM to strings.qualityMedium,
+                        GraphicsQuality.LOW to strings.qualityLow,
+                    ).forEach { (quality, label) ->
+                        val active = preferences.graphicsQuality == quality
+                        TactileCapsuleButton(
+                            onClick = { onSetGraphicsQuality(quality) },
+                            contentDescription = label,
+                            cornerRadius = 16.dp,
+                            hapticsEnabled = preferences.hapticsEnabled,
+                            active = active,
+                            feedbackEvent = FeedbackEvent.SETTINGS_TICK,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .testTag("quality_${quality.name.lowercase()}"),
                         ) {
                             Text(
                                 text = label,
@@ -778,6 +872,7 @@ fun SettingsBottomSheet(
                             cornerRadius = 16.dp,
                             hapticsEnabled = preferences.hapticsEnabled,
                             active = active,
+                            feedbackEvent = FeedbackEvent.SETTINGS_TICK,
                             modifier = Modifier
                                 .weight(1f)
                                 .height(42.dp)
@@ -822,6 +917,7 @@ fun SettingsBottomSheet(
                             cornerRadius = 16.dp,
                             hapticsEnabled = preferences.hapticsEnabled,
                             active = (mins == 0 && sleepTimerRemainingMs == 0L),
+                            feedbackEvent = FeedbackEvent.SETTINGS_TICK,
                             modifier = Modifier.height(38.dp),
                         ) {
                             Text(
@@ -835,16 +931,30 @@ fun SettingsBottomSheet(
                 }
             }
 
-            // Haptics & Reduced Motion Accessibility Toggles
+            // Haptics, Mechanical UI Sounds, Battery Saver & Reduced Motion Toggles
             SettingsToggleRow(
                 label = strings.haptics,
                 checked = preferences.hapticsEnabled,
                 onCheckedChange = onSetHaptics,
+                testTag = "toggle_haptics",
+            )
+            SettingsToggleRow(
+                label = strings.uiSounds,
+                checked = preferences.uiSoundsEnabled,
+                onCheckedChange = onSetUiSounds,
+                testTag = "toggle_ui_sounds",
+            )
+            SettingsToggleRow(
+                label = strings.batterySaver,
+                checked = preferences.batterySaverMode,
+                onCheckedChange = onSetBatterySaver,
+                testTag = "toggle_battery_saver",
             )
             SettingsToggleRow(
                 label = strings.reducedMotion,
                 checked = preferences.reducedMotion,
                 onCheckedChange = onSetReducedMotion,
+                testTag = "toggle_reduced_motion",
             )
 
             // Offline Library Actions
@@ -857,6 +967,7 @@ fun SettingsBottomSheet(
                     contentDescription = strings.importAudio,
                     cornerRadius = 18.dp,
                     hapticsEnabled = preferences.hapticsEnabled,
+                    feedbackEvent = FeedbackEvent.CONFIRM,
                     modifier = Modifier.weight(1f).height(46.dp),
                 ) {
                     Text(strings.importAudio, style = MaterialTheme.typography.labelLarge, color = palette.inkPrimary)
@@ -869,6 +980,7 @@ fun SettingsBottomSheet(
                     contentDescription = strings.scanDevice,
                     cornerRadius = 18.dp,
                     hapticsEnabled = preferences.hapticsEnabled,
+                    feedbackEvent = FeedbackEvent.CONFIRM,
                     modifier = Modifier.weight(1f).height(46.dp),
                 ) {
                     Text(strings.scanDevice, style = MaterialTheme.typography.labelLarge, color = palette.inkPrimary)
@@ -885,6 +997,7 @@ private fun SettingsToggleRow(
     label: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    testTag: String,
 ) {
     val palette = LocalPlinthColors.current
     Row(
@@ -900,11 +1013,15 @@ private fun SettingsToggleRow(
         Text(text = label, style = MaterialTheme.typography.titleSmall, color = palette.inkPrimary)
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = { next ->
+                PlinthFeedback.trigger(FeedbackEvent.TOGGLE_STATE)
+                onCheckedChange(next)
+            },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = palette.capsuleBg,
                 checkedTrackColor = palette.inkPrimary,
             ),
+            modifier = Modifier.testTag(testTag),
         )
     }
 }
@@ -935,6 +1052,7 @@ fun CreatePlaylistDialog(
             TextButton(
                 onClick = {
                     if (title.isNotBlank()) {
+                        PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
                         onCreate(title)
                         onDismiss()
                     }
@@ -945,7 +1063,12 @@ fun CreatePlaylistDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = {
+                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                    onDismiss()
+                },
+            ) {
                 Text(strings.cancel, color = palette.inkSecondary)
             }
         },
@@ -980,6 +1103,7 @@ fun AddToPlaylistDialog(
                                 .background(palette.canvasTop)
                                 .border(1.dp, palette.hairline, RoundedCornerShape(14.dp))
                                 .clickable {
+                                    PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
                                     onSelectPlaylist(pl)
                                     onDismiss()
                                 }
@@ -998,6 +1122,7 @@ fun AddToPlaylistDialog(
         confirmButton = {
             TextButton(
                 onClick = {
+                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                     onDismiss()
                     onCreateNewPlaylist()
                 },
@@ -1006,7 +1131,12 @@ fun AddToPlaylistDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = {
+                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                    onDismiss()
+                },
+            ) {
                 Text(strings.cancel, color = palette.inkSecondary)
             }
         },

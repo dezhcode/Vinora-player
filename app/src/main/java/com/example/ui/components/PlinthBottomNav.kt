@@ -25,13 +25,13 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
 
@@ -52,7 +52,6 @@ fun PlinthBottomNav(
 ) {
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
-    val haptic = LocalHapticFeedback.current
 
     Box(
         modifier = modifier
@@ -73,7 +72,7 @@ fun PlinthBottomNav(
                 selected = selectedTab == MainTab.HOME,
                 testTag = "nav_home",
                 onClick = {
-                    if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                     onSelectTab(MainTab.HOME)
                 },
             ) { color, selected ->
@@ -85,7 +84,7 @@ fun PlinthBottomNav(
                 selected = selectedTab == MainTab.EXPLORE,
                 testTag = "nav_explore",
                 onClick = {
-                    if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                     onSelectTab(MainTab.EXPLORE)
                 },
             ) { color, selected ->
@@ -97,7 +96,7 @@ fun PlinthBottomNav(
                 selected = selectedTab == MainTab.LIBRARY,
                 testTag = "nav_library",
                 onClick = {
-                    if (hapticsEnabled) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                     onSelectTab(MainTab.LIBRARY)
                 },
             ) { color, selected ->

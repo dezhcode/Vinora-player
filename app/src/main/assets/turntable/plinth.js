@@ -1,121 +1,96 @@
 import * as THREE from './vendor/three.module.min.js';
 import { RoundedBoxGeometry } from './vendor/RoundedBoxGeometry.js';
-import { createPlinthBadgeTexture } from './textures.js';
+import { createBakedShadowTexture, createPlinthBadgeTexture } from './textures.js';
 
 export const PLATTER_CENTER = new THREE.Vector3(-0.18, 0.20, 0.08);
 
 /**
- * Builds the CNC-machined 3D Plinth chassis with chamfered bezel, isolation feet,
- * recessed platter well, rear brass RCA jacks, Torx corner screws, 3D rotary volume dial,
- * and physical ceramic/metal start-stop button.
+ * Modern Industrial CNC-Machined Horizontal Plinth Chassis:
+ * - Precision brushed aluminum / titanium body with crisp chamfered edges (low-poly mobile optimized)
+ * - Pre-baked soft ambient contact shadow + recessed dark anodized platter well
+ * - Corner Torx screws, sleek rear silver terminals, rotary volume dial, and Start/Stop key
  */
 export function createPlinthAssembly(maps) {
   const group = new THREE.Group();
   group.name = 'PlinthAssembly';
 
-  // --- Materials ---
-  const chassisMat = new THREE.MeshPhysicalMaterial({
-    color: 0xeaeef5,
+  // --- Modern Industrial Monochrome & Aluminum Materials ---
+  const chassisMat = new THREE.MeshStandardMaterial({
+    color: 0xeaf0f7,
     metalness: 0.72,
     roughness: 0.34,
     roughnessMap: maps.brushedRoughness,
     normalMap: maps.brushedNormal,
-    normalScale: new THREE.Vector2(0.18, 0.18),
-    clearcoat: 0.28,
-    clearcoatRoughness: 0.42,
-    envMapIntensity: 1.05,
+    normalScale: new THREE.Vector2(0.16, 0.16),
+    envMapIntensity: 1.0,
   });
 
   const trimBevelMat = new THREE.MeshStandardMaterial({
     color: 0xf7f9fc,
-    metalness: 0.92,
+    metalness: 0.90,
     roughness: 0.18,
-    envMapIntensity: 1.2,
+    envMapIntensity: 1.15,
   });
 
   const darkMetalMat = new THREE.MeshStandardMaterial({
-    color: 0x222630,
-    metalness: 0.85,
-    roughness: 0.32,
+    color: 0x1c2029,
+    metalness: 0.82,
+    roughness: 0.34,
   });
 
-  const rubberFootMat = new THREE.MeshStandardMaterial({
-    color: 0x16181e,
-    metalness: 0.05,
-    roughness: 0.88,
-    roughnessMap: maps.rubberRoughness,
-  });
-
-  const brassMat = new THREE.MeshStandardMaterial({
-    color: 0xc99e63,
-    metalness: 0.94,
-    roughness: 0.22,
-    envMapIntensity: 1.25,
-  });
-
-  const ceramicBtnMat = new THREE.MeshPhysicalMaterial({
-    color: 0xfbfcfe,
-    metalness: 0.04,
-    roughness: 0.16,
-    clearcoat: 0.92,
-    clearcoatRoughness: 0.08,
-    envMapIntensity: 1.0,
+  const ceramicBtnMat = new THREE.MeshStandardMaterial({
+    color: 0xfafbfd,
+    metalness: 0.08,
+    roughness: 0.20,
+    envMapIntensity: 0.95,
   });
 
   const ledMat = new THREE.MeshStandardMaterial({
-    color: 0x707888,
-    emissive: 0xd99b43,
+    color: 0x697282,
+    emissive: 0x9ec2ff,
     emissiveIntensity: 0.0,
-    roughness: 0.25,
-    metalness: 0.1,
+    roughness: 0.22,
+    metalness: 0.15,
   });
 
-  // 1. Main Thick Brushed Aluminum / Titanium Plinth Body
-  const plinthWidth = 4.30;
-  const plinthHeight = 0.36;
-  const plinthDepth = 4.10;
-  const bodyGeo = new RoundedBoxGeometry(plinthWidth, plinthHeight, plinthDepth, 6, 0.20);
+  // 1. Flat Horizontal CNC-Machined Aluminum Plinth Body (low segment count for fast mobile rendering)
+  const plinthWidth = 4.24;
+  const plinthHeight = 0.34;
+  const plinthDepth = 4.04;
+  const bodyGeo = new RoundedBoxGeometry(plinthWidth, plinthHeight, plinthDepth, 3, 0.18);
   const bodyMesh = new THREE.Mesh(bodyGeo, chassisMat);
   bodyMesh.castShadow = true;
   bodyMesh.receiveShadow = true;
   group.add(bodyMesh);
 
-  // Subtle recessed dark acoustic underside skirt + 4 CNC isolation feet
-  const skirtGeo = new RoundedBoxGeometry(plinthWidth - 0.18, 0.06, plinthDepth - 0.18, 3, 0.14);
+  // Subtle dark anodized acoustic sub-chassis lip visible around perimeter
+  const skirtGeo = new RoundedBoxGeometry(plinthWidth - 0.12, 0.05, plinthDepth - 0.12, 2, 0.12);
   const skirtMesh = new THREE.Mesh(skirtGeo, darkMetalMat);
-  skirtMesh.position.y = -plinthHeight / 2 - 0.025;
-  skirtMesh.castShadow = true;
+  skirtMesh.position.y = -plinthHeight / 2 - 0.022;
   group.add(skirtMesh);
 
-  const footGeo = new THREE.CylinderGeometry(0.24, 0.21, 0.08, 32);
-  const footRingGeo = new THREE.CylinderGeometry(0.245, 0.245, 0.025, 32);
-  const footCoords = [
-    [-1.72, -1.62],
-    [1.72, -1.62],
-    [-1.72, 1.62],
-    [1.72, 1.62],
-  ];
-  for (const [fx, fz] of footCoords) {
-    const foot = new THREE.Mesh(footGeo, rubberFootMat);
-    foot.position.set(fx, -plinthHeight / 2 - 0.075, fz);
-    foot.castShadow = true;
-    group.add(foot);
+  // Pre-baked ambient occlusion / contact shadow beneath the horizontal body (zero runtime shadow cost)
+  const bakedShadowTex = createBakedShadowTexture();
+  const bakedShadowMat = new THREE.MeshBasicMaterial({
+    map: bakedShadowTex,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+  });
+  const bakedShadowMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.95, 4.75), bakedShadowMat);
+  bakedShadowMesh.rotation.x = -Math.PI / 2;
+  bakedShadowMesh.position.y = -plinthHeight / 2 - 0.055;
+  group.add(bakedShadowMesh);
 
-    const collar = new THREE.Mesh(footRingGeo, trimBevelMat);
-    collar.position.set(fx, -plinthHeight / 2 - 0.045, fz);
-    group.add(collar);
-  }
-
-  // 2. Machined Top Deck Inner Chamfer Border Frame
+  // 2. Machined Recessed Platter Well + Aluminum Collar
   const topY = plinthHeight / 2;
   const wellCenter = new THREE.Vector3(PLATTER_CENTER.x, topY, PLATTER_CENTER.z);
 
-  // Recessed platter well dark shadow floor + precision machined metal bezel collar
-  const wellFloorGeo = new THREE.CylinderGeometry(1.69, 1.69, 0.02, 72);
+  const wellFloorGeo = new THREE.CylinderGeometry(1.68, 1.68, 0.018, 56);
   const wellFloorMat = new THREE.MeshStandardMaterial({
-    color: 0x1e222b,
+    color: 0x161920,
     metalness: 0.35,
-    roughness: 0.72,
+    roughness: 0.76,
   });
   const wellFloor = new THREE.Mesh(wellFloorGeo, wellFloorMat);
   wellFloor.position.set(wellCenter.x, topY + 0.002, wellCenter.z);
@@ -123,89 +98,69 @@ export function createPlinthAssembly(maps) {
   group.add(wellFloor);
 
   const wellRimProfile = [
-    new THREE.Vector2(1.65, 0.0),
-    new THREE.Vector2(1.67, 0.018),
-    new THREE.Vector2(1.73, 0.018),
-    new THREE.Vector2(1.76, 0.001),
+    new THREE.Vector2(1.64, 0.0),
+    new THREE.Vector2(1.66, 0.018),
+    new THREE.Vector2(1.72, 0.018),
+    new THREE.Vector2(1.75, 0.001),
   ];
-  const wellRimGeo = new THREE.LatheGeometry(wellRimProfile, 72);
+  const wellRimGeo = new THREE.LatheGeometry(wellRimProfile, 56);
   const wellRim = new THREE.Mesh(wellRimGeo, trimBevelMat);
   wellRim.position.set(wellCenter.x, topY - 0.001, wellCenter.z);
   wellRim.receiveShadow = true;
   group.add(wellRim);
 
-  // 3. Corner Torx Chassis Screws (Real 3D recessed heads + Torx slot)
-  const screwGroupGeo = new THREE.CylinderGeometry(0.042, 0.042, 0.012, 16);
-  const screwSlotGeo = new THREE.BoxGeometry(0.048, 0.006, 0.011);
+  // 3. Corner Torx Precision Screws (InstancedMesh single draw call)
+  const screwGeo = new THREE.CylinderGeometry(0.040, 0.040, 0.012, 12);
+  const screwSlotGeo = new THREE.BoxGeometry(0.044, 0.006, 0.010);
   const screwCoords = [
-    [-1.92, -1.82],
-    [1.92, -1.82],
-    [-1.92, 1.82],
-    [1.92, 1.82],
+    [-1.90, -1.80],
+    [1.90, -1.80],
+    [-1.90, 1.80],
+    [1.90, 1.80],
   ];
-  for (const [sx, sz] of screwCoords) {
-    const head = new THREE.Mesh(screwGroupGeo, trimBevelMat);
-    head.position.set(sx, topY - 0.001, sz);
-    group.add(head);
-    const slot = new THREE.Mesh(screwSlotGeo, darkMetalMat);
-    slot.position.set(sx, topY + 0.004, sz);
-    slot.rotation.y = 0.6;
-    group.add(slot);
-  }
+  const screwHeads = new THREE.InstancedMesh(screwGeo, trimBevelMat, 4);
+  const screwSlots = new THREE.InstancedMesh(screwSlotGeo, darkMetalMat, 4);
+  const dummy = new THREE.Object3D();
+  screwCoords.forEach(([sx, sz], i) => {
+    dummy.position.set(sx, topY - 0.001, sz);
+    dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    screwHeads.setMatrixAt(i, dummy.matrix);
 
-  // 4. Rear Edge Brass RCA Connectors & Ground Post (Authentic Hi-Fi Backplane Detail!)
-  const rcaBodyGeo = new THREE.CylinderGeometry(0.052, 0.052, 0.14, 24);
-  rcaBodyGeo.rotateX(Math.PI / 2);
-  const rcaPinGeo = new THREE.CylinderGeometry(0.020, 0.020, 0.09, 16);
-  rcaPinGeo.rotateX(Math.PI / 2);
-  const rcaInsulatorGeo = new THREE.CylinderGeometry(0.042, 0.042, 0.03, 20);
-  rcaInsulatorGeo.rotateX(Math.PI / 2);
+    dummy.position.set(sx, topY + 0.004, sz);
+    dummy.rotation.set(0, 0.65, 0);
+    dummy.updateMatrix();
+    screwSlots.setMatrixAt(i, dummy.matrix);
+  });
+  group.add(screwHeads);
+  group.add(screwSlots);
 
-  const rcaXs = [0.22, 0.46];
-  const rcaColors = [0xc95348, 0xf2f4f8]; // Right Red / Left White insulators
-  rcaXs.forEach((rx, idx) => {
-    const base = new THREE.Mesh(rcaBodyGeo, brassMat);
-    base.position.set(rx, 0.02, -plinthDepth / 2 - 0.04);
-    base.castShadow = true;
-    group.add(base);
-
-    const ins = new THREE.Mesh(
-      rcaInsulatorGeo,
-      new THREE.MeshStandardMaterial({ color: rcaColors[idx], roughness: 0.4 }),
-    );
-    ins.position.set(rx, 0.02, -plinthDepth / 2 - 0.10);
-    group.add(ins);
-
-    const pin = new THREE.Mesh(rcaPinGeo, brassMat);
-    pin.position.set(rx, 0.02, -plinthDepth / 2 - 0.13);
-    group.add(pin);
+  // 4. Sleek Rear Anodized Steel Terminals (Modern silver/slate, no brass/gold)
+  const portGeo = new THREE.CylinderGeometry(0.046, 0.046, 0.11, 16);
+  portGeo.rotateX(Math.PI / 2);
+  const portXs = [0.24, 0.48, 0.72];
+  portXs.forEach((rx) => {
+    const port = new THREE.Mesh(portGeo, trimBevelMat);
+    port.position.set(rx, 0.02, -plinthDepth / 2 - 0.035);
+    group.add(port);
   });
 
-  // Ground knurled thumb screw
-  const gndPost = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.036, 0.036, 0.10, 20),
-    brassMat,
-  );
-  gndPost.rotation.x = Math.PI / 2;
-  gndPost.position.set(0.70, 0.02, -plinthDepth / 2 - 0.045);
-  group.add(gndPost);
-
-  // 5. Engraved PLINTH Nameplate on Front-Left Edge
+  // 5. Minimalist PLINTH Nameplate on Front-Left Edge
   let badgeTex = createPlinthBadgeTexture(false);
   const badgeMat = new THREE.MeshBasicMaterial({
     map: badgeTex,
     transparent: true,
     opacity: 0.85,
   });
-  const badgeMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.76, 0.19), badgeMat);
+  const badgeMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.74, 0.185), badgeMat);
   badgeMesh.rotation.x = -Math.PI / 2;
-  badgeMesh.position.set(-1.38, topY + 0.002, 1.88);
+  badgeMesh.position.set(-1.38, topY + 0.002, 1.85);
   group.add(badgeMesh);
 
-  // 6. Bottom-Left 3D Rotary Volume / Gain Dial (Knurled skirt + 3-spoke engraved top)
-  const knobPos = new THREE.Vector3(-1.62, topY, 1.56);
+  // 6. Bottom-Left 3D Machined Rotary Volume Dial
+  const knobPos = new THREE.Vector3(-1.60, topY, 1.54);
   const knobBezel = new THREE.Mesh(
-    new THREE.RingGeometry(0.24, 0.285, 48),
+    new THREE.RingGeometry(0.235, 0.278, 36),
     trimBevelMat,
   );
   knobBezel.rotation.x = -Math.PI / 2;
@@ -216,59 +171,60 @@ export function createPlinthAssembly(maps) {
   volumeKnobGroup.name = 'VolumeKnob';
   volumeKnobGroup.position.set(knobPos.x, topY, knobPos.z);
 
-  const knobSkirtGeo = new THREE.CylinderGeometry(0.235, 0.252, 0.11, 48, 1, false);
   const knobSkirtMat = new THREE.MeshStandardMaterial({
     color: 0xd9dfe9,
-    metalness: 0.88,
+    metalness: 0.86,
     roughness: 0.26,
     normalMap: maps.knurlNormal,
-    normalScale: new THREE.Vector2(0.45, 0.1),
+    normalScale: new THREE.Vector2(0.42, 0.1),
   });
-  const knobSkirt = new THREE.Mesh(knobSkirtGeo, knobSkirtMat);
-  knobSkirt.position.y = 0.055;
+  const knobSkirt = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.228, 0.244, 0.095, 36),
+    knobSkirtMat,
+  );
+  knobSkirt.position.y = 0.048;
   knobSkirt.castShadow = true;
   knobSkirt.receiveShadow = true;
   volumeKnobGroup.add(knobSkirt);
 
   const knobTopCap = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.22, 0.235, 0.02, 48),
+    new THREE.CylinderGeometry(0.214, 0.228, 0.018, 36),
     ceramicBtnMat,
   );
-  knobTopCap.position.y = 0.115;
+  knobTopCap.position.y = 0.102;
   knobTopCap.castShadow = true;
   knobTopCap.receiveShadow = true;
   volumeKnobGroup.add(knobTopCap);
 
-  // Engraved 3-spoke pointer lines on top of the rotary dial
   const spokeMat = new THREE.MeshStandardMaterial({
-    color: 0x677185,
-    metalness: 0.4,
-    roughness: 0.45,
+    color: 0x5c667a,
+    metalness: 0.45,
+    roughness: 0.4,
   });
   for (let i = 0; i < 3; i++) {
     const angle = (i * Math.PI * 2) / 3;
-    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.008, 0.20), spokeMat);
-    spoke.position.set(Math.sin(angle) * 0.10, 0.125, Math.cos(angle) * 0.10);
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.007, 0.19), spokeMat);
+    spoke.position.set(Math.sin(angle) * 0.095, 0.112, Math.cos(angle) * 0.095);
     spoke.rotation.y = angle;
     volumeKnobGroup.add(spoke);
   }
   const dialDot = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.022, 0.022, 0.01, 16),
+    new THREE.CylinderGeometry(0.020, 0.020, 0.009, 12),
     darkMetalMat,
   );
-  dialDot.position.set(0, 0.126, -0.15);
+  dialDot.position.set(0, 0.113, -0.145);
   volumeKnobGroup.add(dialDot);
 
   group.add(volumeKnobGroup);
 
-  // 7. Bottom-Right 3D Physical Start/Stop Plunger Button + LED Indicator
-  const btnPos = new THREE.Vector3(1.62, topY, 1.56);
+  // 7. Bottom-Right 3D Physical Start/Stop Button + Crisp Pinhole Status LED
+  const btnPos = new THREE.Vector3(1.60, topY, 1.54);
   const btnWell = new THREE.Mesh(
-    new THREE.TorusGeometry(0.255, 0.022, 16, 48),
+    new THREE.TorusGeometry(0.248, 0.020, 12, 36),
     trimBevelMat,
   );
   btnWell.rotation.x = Math.PI / 2;
-  btnWell.position.set(btnPos.x, topY + 0.005, btnPos.z);
+  btnWell.position.set(btnPos.x, topY + 0.004, btnPos.z);
   group.add(btnWell);
 
   const startButtonGroup = new THREE.Group();
@@ -276,51 +232,51 @@ export function createPlinthAssembly(maps) {
   startButtonGroup.position.set(btnPos.x, topY, btnPos.z);
 
   const btnSkirt = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.228, 0.238, 0.09, 48),
+    new THREE.CylinderGeometry(0.222, 0.232, 0.082, 36),
     trimBevelMat,
   );
-  btnSkirt.position.y = 0.045;
+  btnSkirt.position.y = 0.041;
   btnSkirt.castShadow = true;
   btnSkirt.receiveShadow = true;
   startButtonGroup.add(btnSkirt);
 
   const btnCap = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.215, 0.228, 0.024, 48),
+    new THREE.CylinderGeometry(0.210, 0.222, 0.022, 36),
     ceramicBtnMat,
   );
-  btnCap.position.y = 0.095;
+  btnCap.position.y = 0.088;
   btnCap.castShadow = true;
   btnCap.receiveShadow = true;
   startButtonGroup.add(btnCap);
 
-  // Power status pinhole LED
   const ledMesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.022, 0.022, 0.008, 16),
+    new THREE.CylinderGeometry(0.020, 0.020, 0.008, 12),
     ledMat,
   );
-  ledMesh.position.set(0, 0.107, 0);
+  ledMesh.position.set(0, 0.100, 0);
   startButtonGroup.add(ledMesh);
 
   group.add(startButtonGroup);
 
-  // Theme updater for Light Studio <-> Dark Titanium
   function setTheme(isDark) {
     if (isDark) {
-      chassisMat.color.setHex(0x2a303c);
+      chassisMat.color.setHex(0x282e39);
       chassisMat.metalness = 0.78;
       chassisMat.roughness = 0.36;
-      trimBevelMat.color.setHex(0x525c70);
-      ceramicBtnMat.color.setHex(0x212630);
-      knobSkirtMat.color.setHex(0x3a4150);
-      wellFloorMat.color.setHex(0x0c0e13);
+      trimBevelMat.color.setHex(0x4c5669);
+      ceramicBtnMat.color.setHex(0x1f242e);
+      knobSkirtMat.color.setHex(0x363d4c);
+      wellFloorMat.color.setHex(0x090b0f);
+      bakedShadowMat.opacity = 0.92;
     } else {
-      chassisMat.color.setHex(0xeaeef5);
+      chassisMat.color.setHex(0xeaf0f7);
       chassisMat.metalness = 0.72;
       chassisMat.roughness = 0.34;
       trimBevelMat.color.setHex(0xf7f9fc);
-      ceramicBtnMat.color.setHex(0xfbfcfe);
+      ceramicBtnMat.color.setHex(0xfafbfd);
       knobSkirtMat.color.setHex(0xd9dfe9);
-      wellFloorMat.color.setHex(0x1e222b);
+      wellFloorMat.color.setHex(0x161920);
+      bakedShadowMat.opacity = 0.68;
     }
     const nextBadge = createPlinthBadgeTexture(isDark);
     badgeMat.map = nextBadge;
@@ -329,11 +285,24 @@ export function createPlinthAssembly(maps) {
     badgeTex = nextBadge;
   }
 
+  function dispose() {
+    bakedShadowTex.dispose();
+    badgeTex.dispose();
+    group.traverse((obj) => {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose());
+        else obj.material.dispose();
+      }
+    });
+  }
+
   return {
     group,
     volumeKnobGroup,
     startButtonGroup,
     ledMat,
     setTheme,
+    dispose,
   };
 }

@@ -45,20 +45,23 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.audio.SpectrumSnapshot
 import com.example.ui.theme.DigitalMonoFontFamily
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
 import com.example.viewmodel.formatDuration
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Architectural Acoustic Spectrum Deck + Floating Peak-Hold Beads + Digital Time + Scrub Track.
- * Driven by real PCM FFT Bass/Mid/Treble energy from AudioSpectrumProcessor.
- * Tapping the spectrum instrument opens the 5-Band Hardware Equalizer directly.
+ * Collects real PCM FFT energy locally so parent composables & 3D WebGL deck never recompose at 45Hz.
  */
 @Composable
 fun LiveAudioVisualizerSection(
-    spectrum: SpectrumSnapshot,
+    spectrumFlow: StateFlow<SpectrumSnapshot>,
     isPlaying: Boolean,
     positionMs: Long,
     durationMs: Long,
@@ -68,6 +71,7 @@ fun LiveAudioVisualizerSection(
 ) {
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
+    val spectrum by spectrumFlow.collectAsStateWithLifecycle()
     val safeDuration = durationMs.coerceAtLeast(1L)
     val progress = (positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
 
@@ -145,7 +149,10 @@ fun LiveAudioVisualizerSection(
                     ),
                     shape = bayShape,
                 )
-                .clickable { onOpenEqualizer() }
+                .clickable {
+                    PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                    onOpenEqualizer()
+                }
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         ) {
             // Subtle Instrument Header: Frequency Telemetry + EQ Trigger

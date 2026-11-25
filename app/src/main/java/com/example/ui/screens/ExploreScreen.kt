@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.data.Track
 import com.example.ui.components.CurvedDiscCarousel
 import com.example.ui.theme.LocalAppStrings
@@ -74,7 +76,10 @@ fun ExploreScreen(
 
             Box {
                 IconButton(
-                    onClick = { menuExpanded = true },
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                        menuExpanded = true
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("explore_menu_button"),
@@ -95,6 +100,7 @@ fun ExploreScreen(
                     DropdownMenuItem(
                         text = { Text(strings.importAudio, color = palette.inkPrimary) },
                         onClick = {
+                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                             menuExpanded = false
                             onImportAudio()
                         },
@@ -102,6 +108,7 @@ fun ExploreScreen(
                     DropdownMenuItem(
                         text = { Text(strings.scanDevice, color = palette.inkPrimary) },
                         onClick = {
+                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                             menuExpanded = false
                             onScanDevice()
                         },
@@ -109,6 +116,7 @@ fun ExploreScreen(
                     DropdownMenuItem(
                         text = { Text(strings.equalizer, color = palette.inkPrimary) },
                         onClick = {
+                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                             menuExpanded = false
                             onOpenEqualizer()
                         },
@@ -116,6 +124,7 @@ fun ExploreScreen(
                     DropdownMenuItem(
                         text = { Text(strings.settings, color = palette.inkPrimary) },
                         onClick = {
+                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                             menuExpanded = false
                             onOpenSettings()
                         },

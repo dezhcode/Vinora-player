@@ -16,10 +16,12 @@ import androidx.media3.session.SessionToken
 import com.example.audio.AudioEqualizerController
 import com.example.audio.EqualizerState
 import com.example.audio.PlaybackService
+import com.example.audio.PlinthFeedback
 import com.example.audio.SpectrumBus
 import com.example.audio.SpectrumSnapshot
 import com.example.data.AlbumGroup
 import com.example.data.ArtistGroup
+import com.example.data.GraphicsQuality
 import com.example.data.MusicDatabase
 import com.example.data.MusicRepository
 import com.example.data.PlaybackPreferences
@@ -185,9 +187,22 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     )
 
     init {
+        PlinthFeedback.init(appContext)
         connectToPlaybackService()
         bootstrapLibrary()
         startPositionTicker()
+        observeFeedbackPreferences()
+    }
+
+    private fun observeFeedbackPreferences() {
+        viewModelScope.launch {
+            repository.preferences.preferencesFlow.collect { prefs ->
+                PlinthFeedback.updateSettings(
+                    haptics = prefs.hapticsEnabled,
+                    uiSounds = prefs.uiSoundsEnabled,
+                )
+            }
+        }
     }
 
     private fun bootstrapLibrary() {
@@ -583,6 +598,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setHapticsEnabled(enabled: Boolean) {
         viewModelScope.launch { repository.setHapticsEnabled(enabled) }
+    }
+
+    fun setUiSoundsEnabled(enabled: Boolean) {
+        viewModelScope.launch { repository.setUiSoundsEnabled(enabled) }
+    }
+
+    fun setGraphicsQuality(quality: GraphicsQuality) {
+        viewModelScope.launch { repository.setGraphicsQuality(quality) }
+    }
+
+    fun setBatterySaverMode(enabled: Boolean) {
+        viewModelScope.launch { repository.setBatterySaverMode(enabled) }
     }
 
     fun setReducedMotion(enabled: Boolean) {

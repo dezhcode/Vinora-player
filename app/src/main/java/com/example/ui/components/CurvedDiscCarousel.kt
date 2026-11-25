@@ -40,11 +40,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +51,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.data.Track
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
@@ -82,7 +82,6 @@ fun CurvedDiscCarousel(
 
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
-    val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -102,14 +101,12 @@ fun CurvedDiscCarousel(
         }
     }
 
-    // Fire crisp subtle haptic tick whenever the centered disc crosses a detent
+    // Fire crisp subtle tactile + mechanical detent whenever the centered disc crosses a track
     LaunchedEffect(scrollIndex.value.roundToInt()) {
         val snapped = scrollIndex.value.roundToInt().coerceIn(0, tracks.lastIndex)
         if (snapped != lastHapticIndex) {
             lastHapticIndex = snapped
-            if (hapticsEnabled) {
-                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            }
+            PlinthFeedback.triggerSliderDetent(isMajorNotch = false)
         }
     }
 
@@ -366,6 +363,7 @@ fun CurvedDiscCarousel(
                                 cornerRadius = 18.dp,
                                 hapticsEnabled = hapticsEnabled,
                                 active = isTrackActive,
+                                feedbackEvent = FeedbackEvent.PLAY_PAUSE,
                                 modifier = Modifier
                                     .testTag("explore_play_button_${track.id}")
                                     .graphicsLayer { alpha = focusWeight }

@@ -14,10 +14,17 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "plinth_prefs")
 
+enum class GraphicsQuality {
+    AUTO, HIGH, MEDIUM, LOW
+}
+
 data class UserPreferences(
     val themeMode: ThemeMode = ThemeMode.LIGHT,
     val language: AppLanguage = AppLanguage.EN,
     val hapticsEnabled: Boolean = true,
+    val uiSoundsEnabled: Boolean = true,
+    val graphicsQuality: GraphicsQuality = GraphicsQuality.AUTO,
+    val batterySaverMode: Boolean = false,
     val reducedMotion: Boolean = false,
     val shuffleEnabled: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.ALL,
@@ -33,6 +40,9 @@ class PlaybackPreferences(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val LANGUAGE = stringPreferencesKey("language")
         val HAPTICS = booleanPreferencesKey("haptics")
+        val UI_SOUNDS = booleanPreferencesKey("ui_sounds")
+        val GRAPHICS_QUALITY = stringPreferencesKey("graphics_quality")
+        val BATTERY_SAVER = booleanPreferencesKey("battery_saver")
         val REDUCED_MOTION = booleanPreferencesKey("reduced_motion")
         val SHUFFLE = booleanPreferencesKey("shuffle")
         val REPEAT_MODE = stringPreferencesKey("repeat_mode")
@@ -52,6 +62,10 @@ class PlaybackPreferences(private val context: Context) {
             AppLanguage.valueOf(prefs[Keys.LANGUAGE] ?: AppLanguage.EN.name)
         }.getOrDefault(AppLanguage.EN)
 
+        val quality = runCatching {
+            GraphicsQuality.valueOf(prefs[Keys.GRAPHICS_QUALITY] ?: GraphicsQuality.AUTO.name)
+        }.getOrDefault(GraphicsQuality.AUTO)
+
         val repeat = runCatching {
             RepeatMode.valueOf(prefs[Keys.REPEAT_MODE] ?: RepeatMode.ALL.name)
         }.getOrDefault(RepeatMode.ALL)
@@ -66,6 +80,9 @@ class PlaybackPreferences(private val context: Context) {
             themeMode = theme,
             language = lang,
             hapticsEnabled = prefs[Keys.HAPTICS] ?: true,
+            uiSoundsEnabled = prefs[Keys.UI_SOUNDS] ?: true,
+            graphicsQuality = quality,
+            batterySaverMode = prefs[Keys.BATTERY_SAVER] ?: false,
             reducedMotion = prefs[Keys.REDUCED_MOTION] ?: false,
             shuffleEnabled = prefs[Keys.SHUFFLE] ?: false,
             repeatMode = repeat,
@@ -87,6 +104,18 @@ class PlaybackPreferences(private val context: Context) {
 
     suspend fun setHapticsEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.HAPTICS] = enabled }
+    }
+
+    suspend fun setUiSoundsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.UI_SOUNDS] = enabled }
+    }
+
+    suspend fun setGraphicsQuality(quality: GraphicsQuality) {
+        context.dataStore.edit { it[Keys.GRAPHICS_QUALITY] = quality.name }
+    }
+
+    suspend fun setBatterySaverMode(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.BATTERY_SAVER] = enabled }
     }
 
     suspend fun setReducedMotion(enabled: Boolean) {

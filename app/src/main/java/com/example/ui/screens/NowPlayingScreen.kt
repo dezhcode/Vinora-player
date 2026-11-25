@@ -61,7 +61,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.audio.SpectrumSnapshot
+import com.example.data.GraphicsQuality
 import com.example.data.RepeatMode
 import com.example.data.Track
 import com.example.ui.components.LiveAudioVisualizerSection
@@ -74,6 +77,8 @@ import com.example.ui.theme.DigitalMonoFontFamily
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
 import com.example.viewmodel.formatDuration
+import kotlinx.coroutines.flow.StateFlow
+import kotlin.math.roundToInt
 
 @Composable
 fun NowPlayingScreen(
@@ -86,10 +91,12 @@ fun NowPlayingScreen(
     repeatMode: RepeatMode,
     isFavorite: Boolean,
     sleepTimerRemainingMs: Long,
-    spectrum: SpectrumSnapshot,
+    spectrumFlow: StateFlow<SpectrumSnapshot>,
     trackChangeNonce: Int,
     trackChangeDirection: Int,
     hapticsEnabled: Boolean,
+    graphicsQuality: GraphicsQuality,
+    batterySaverMode: Boolean,
     reducedMotion: Boolean,
     onBack: () -> Unit,
     onTogglePlayPause: () -> Unit,
@@ -182,7 +189,10 @@ fun NowPlayingScreen(
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             ) {
                 IconButton(
-                    onClick = onBack,
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                        onBack()
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("now_playing_back_button"),
@@ -211,7 +221,10 @@ fun NowPlayingScreen(
 
                 Box {
                     IconButton(
-                        onClick = { menuExpanded = true },
+                        onClick = {
+                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                            menuExpanded = true
+                        },
                         modifier = Modifier
                             .size(48.dp)
                             .testTag("now_playing_menu_button"),
@@ -232,6 +245,7 @@ fun NowPlayingScreen(
                         DropdownMenuItem(
                             text = { Text(strings.addToPlaylist, color = palette.inkPrimary) },
                             onClick = {
+                                PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
                                 menuExpanded = false
                                 onOpenAddToPlaylist()
                             },
@@ -239,6 +253,7 @@ fun NowPlayingScreen(
                         DropdownMenuItem(
                             text = { Text(strings.equalizer, color = palette.inkPrimary) },
                             onClick = {
+                                PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                                 menuExpanded = false
                                 onOpenEqualizer()
                             },
@@ -246,6 +261,7 @@ fun NowPlayingScreen(
                         DropdownMenuItem(
                             text = { Text(strings.queue, color = palette.inkPrimary) },
                             onClick = {
+                                PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                                 menuExpanded = false
                                 onOpenQueue()
                             },
@@ -253,6 +269,7 @@ fun NowPlayingScreen(
                         DropdownMenuItem(
                             text = { Text(strings.settings, color = palette.inkPrimary) },
                             onClick = {
+                                PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                                 menuExpanded = false
                                 onOpenSettings()
                             },
@@ -276,7 +293,8 @@ fun NowPlayingScreen(
                     volume = volume,
                     trackChangeNonce = trackChangeNonce,
                     trackChangeDirection = trackChangeDirection,
-                    hapticsEnabled = hapticsEnabled,
+                    graphicsQuality = graphicsQuality,
+                    batterySaverMode = batterySaverMode,
                     reducedMotion = reducedMotion,
                     onTogglePlayPause = onTogglePlayPause,
                     onScrubDeltaMs = onScrubDeltaMs,
@@ -327,7 +345,7 @@ fun NowPlayingScreen(
 
             // Creative Acoustic Spectrum Visualizer + Digital Timer + Interactive Scrub Bar
             LiveAudioVisualizerSection(
-                spectrum = spectrum,
+                spectrumFlow = spectrumFlow,
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
@@ -362,7 +380,14 @@ fun NowPlayingScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Slider(
                         value = volume,
-                        onValueChange = onVolumeChange,
+                        onValueChange = { next ->
+                            val stepBefore = (volume * 20f).roundToInt()
+                            val stepAfter = (next * 20f).roundToInt()
+                            if (stepBefore != stepAfter) {
+                                PlinthFeedback.triggerSliderDetent(stepAfter == 0 || stepAfter == 10 || stepAfter == 20)
+                            }
+                            onVolumeChange(next)
+                        },
                         colors = SliderDefaults.colors(
                             thumbColor = palette.inkPrimary,
                             activeTrackColor = palette.inkPrimary,
@@ -389,6 +414,7 @@ fun NowPlayingScreen(
                     contentDescription = stringResource(R.string.cd_previous),
                     cornerRadius = 26.dp,
                     hapticsEnabled = hapticsEnabled,
+                    feedbackEvent = FeedbackEvent.SKIP_METALLIC,
                     modifier = Modifier
                         .width(90.dp)
                         .height(52.dp)
@@ -408,6 +434,7 @@ fun NowPlayingScreen(
                     size = 78.dp,
                     hapticsEnabled = hapticsEnabled,
                     active = isPlaying,
+                    feedbackEvent = FeedbackEvent.PLAY_PAUSE,
                     modifier = Modifier.testTag("btn_play_pause"),
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -436,6 +463,7 @@ fun NowPlayingScreen(
                     contentDescription = stringResource(R.string.cd_next),
                     cornerRadius = 26.dp,
                     hapticsEnabled = hapticsEnabled,
+                    feedbackEvent = FeedbackEvent.SKIP_METALLIC,
                     modifier = Modifier
                         .width(90.dp)
                         .height(52.dp)
@@ -460,7 +488,10 @@ fun NowPlayingScreen(
                     .padding(horizontal = 24.dp, vertical = 6.dp),
             ) {
                 IconButton(
-                    onClick = onToggleShuffle,
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TOGGLE_STATE)
+                        onToggleShuffle()
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("btn_shuffle"),
@@ -474,7 +505,10 @@ fun NowPlayingScreen(
                 }
 
                 IconButton(
-                    onClick = onToggleFavorite,
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TOGGLE_STATE)
+                        onToggleFavorite()
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("btn_favorite"),
@@ -488,7 +522,10 @@ fun NowPlayingScreen(
                 }
 
                 IconButton(
-                    onClick = { showVolumeStrip = !showVolumeStrip },
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                        showVolumeStrip = !showVolumeStrip
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("btn_volume"),
@@ -502,7 +539,10 @@ fun NowPlayingScreen(
                 }
 
                 IconButton(
-                    onClick = onOpenQueue,
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                        onOpenQueue()
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("btn_queue"),
@@ -516,7 +556,10 @@ fun NowPlayingScreen(
                 }
 
                 IconButton(
-                    onClick = onCycleRepeat,
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TOGGLE_STATE)
+                        onCycleRepeat()
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("btn_repeat"),

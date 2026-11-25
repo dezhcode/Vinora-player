@@ -57,6 +57,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.audio.FeedbackEvent
+import com.example.audio.PlinthFeedback
 import com.example.data.AlbumGroup
 import com.example.data.ArtistGroup
 import com.example.data.PlaylistSummary
@@ -144,7 +146,10 @@ fun LibraryScreen(
                     .padding(horizontal = 12.dp, vertical = 12.dp),
             ) {
                 IconButton(
-                    onClick = { activeDetail = null },
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                        activeDetail = null
+                    },
                     modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
@@ -206,11 +211,17 @@ fun LibraryScreen(
                         CompactVinylTrackRow(
                             track = track,
                             isActive = track.id == activeTrackId,
-                            onClick = { onPlayTrack(track, detailTracks) },
+                            onClick = {
+                                PlinthFeedback.trigger(FeedbackEvent.PLAY_PAUSE)
+                                onPlayTrack(track, detailTracks)
+                            },
                             trailing = {
                                 if (detailPlaylistId != null) {
                                     IconButton(
-                                        onClick = { onRemoveFromPlaylist(detailPlaylistId, track.id) },
+                                        onClick = {
+                                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                            onRemoveFromPlaylist(detailPlaylistId, track.id)
+                                        },
                                         modifier = Modifier.size(48.dp),
                                     ) {
                                         Icon(
@@ -273,6 +284,7 @@ fun LibraryScreen(
             Row {
                 IconButton(
                     onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
                         showSearch = !showSearch
                         if (!showSearch) searchQuery = ""
                     },
@@ -285,7 +297,10 @@ fun LibraryScreen(
                     )
                 }
                 IconButton(
-                    onClick = onImportAudio,
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                        onImportAudio()
+                    },
                     modifier = Modifier.size(48.dp).testTag("library_import_button"),
                 ) {
                     Icon(
@@ -295,7 +310,10 @@ fun LibraryScreen(
                     )
                 }
                 IconButton(
-                    onClick = onScanDevice,
+                    onClick = {
+                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                        onScanDevice()
+                    },
                     modifier = Modifier.size(48.dp).testTag("library_scan_button"),
                 ) {
                     Icon(
@@ -381,7 +399,10 @@ fun LibraryScreen(
                             CompactVinylTrackRow(
                                 track = track,
                                 isActive = track.id == activeTrackId,
-                                onClick = { onPlayTrack(track, filteredTracks) },
+                                onClick = {
+                                    PlinthFeedback.trigger(FeedbackEvent.PLAY_PAUSE)
+                                    onPlayTrack(track, filteredTracks)
+                                },
                                 trailing = {
                                     TrackTrailingActions(
                                         isFavorite = favoriteIds.contains(track.id),
@@ -427,7 +448,10 @@ fun LibraryScreen(
                                     .clip(shape)
                                     .background(Brush.verticalGradient(listOf(palette.plinthTop, palette.plinthBottom)))
                                     .border(1.dp, palette.hairline, shape)
-                                    .clickable { activeDetail = LibraryDetail.Album(album) }
+                                    .clickable {
+                                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                        activeDetail = LibraryDetail.Album(album)
+                                    }
                                     .padding(14.dp),
                             ) {
                                 CircularArtworkDisc(
@@ -477,7 +501,10 @@ fun LibraryScreen(
                                     .clip(shape)
                                     .background(palette.capsuleBg.copy(alpha = 0.82f))
                                     .border(1.dp, palette.hairline, shape)
-                                    .clickable { activeDetail = LibraryDetail.Artist(artist) }
+                                    .clickable {
+                                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                        activeDetail = LibraryDetail.Artist(artist)
+                                    }
                                     .padding(12.dp),
                             ) {
                                 CircularArtworkDisc(
@@ -544,7 +571,10 @@ fun LibraryScreen(
                                     .clip(shape)
                                     .background(palette.capsuleBg.copy(alpha = 0.85f))
                                     .border(1.dp, palette.hairline, shape)
-                                    .clickable { activeDetail = LibraryDetail.Playlist(pl) }
+                                    .clickable {
+                                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                        activeDetail = LibraryDetail.Playlist(pl)
+                                    }
                                     .padding(12.dp),
                             ) {
                                 CircularArtworkDisc(
@@ -566,7 +596,10 @@ fun LibraryScreen(
                                     )
                                 }
                                 IconButton(
-                                    onClick = { onDeletePlaylist(pl.id) },
+                                    onClick = {
+                                        PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                        onDeletePlaylist(pl.id)
+                                    },
                                     modifier = Modifier.size(48.dp),
                                 ) {
                                     Icon(
@@ -593,7 +626,10 @@ fun LibraryScreen(
                             CompactVinylTrackRow(
                                 track = track,
                                 isActive = track.id == activeTrackId,
-                                onClick = { onPlayTrack(track, favoriteTracks) },
+                                onClick = {
+                                    PlinthFeedback.trigger(FeedbackEvent.PLAY_PAUSE)
+                                    onPlayTrack(track, favoriteTracks)
+                                },
                                 trailing = {
                                     TrackTrailingActions(
                                         isFavorite = true,
@@ -619,7 +655,13 @@ private fun TrackTrailingActions(
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
     Row {
-        IconButton(onClick = onToggleFavorite, modifier = Modifier.size(44.dp)) {
+        IconButton(
+            onClick = {
+                PlinthFeedback.trigger(FeedbackEvent.TOGGLE_STATE)
+                onToggleFavorite()
+            },
+            modifier = Modifier.size(44.dp),
+        ) {
             Icon(
                 imageVector = if (isFavorite) Icons.Rounded.Favorite else Icons.Outlined.FavoriteBorder,
                 contentDescription = strings.favorites,
@@ -627,7 +669,13 @@ private fun TrackTrailingActions(
                 modifier = Modifier.size(20.dp),
             )
         }
-        IconButton(onClick = onAddToPlaylist, modifier = Modifier.size(44.dp)) {
+        IconButton(
+            onClick = {
+                PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                onAddToPlaylist()
+            },
+            modifier = Modifier.size(44.dp),
+        ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.PlaylistAdd,
                 contentDescription = strings.addToPlaylist,

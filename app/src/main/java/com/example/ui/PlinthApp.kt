@@ -62,7 +62,6 @@ fun PlinthApp(
     onDarkModeResolved: (Boolean) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val spectrum by viewModel.spectrum.collectAsStateWithLifecycle()
     val eqState by viewModel.equalizerState.collectAsStateWithLifecycle()
 
     val palette = LocalPlinthColors.current
@@ -272,6 +271,7 @@ fun PlinthApp(
                                     isPlaying = uiState.isPlaying,
                                     progressFraction = progressFraction,
                                     hapticsEnabled = uiState.preferences.hapticsEnabled,
+                                    batterySaverMode = uiState.preferences.batterySaverMode,
                                     reducedMotion = uiState.preferences.reducedMotion,
                                     onTogglePlayPause = {
                                         ensureNotificationPermission()
@@ -319,10 +319,12 @@ fun PlinthApp(
                     repeatMode = uiState.preferences.repeatMode,
                     isFavorite = uiState.favoriteIds.contains(activeTrack.id),
                     sleepTimerRemainingMs = uiState.sleepTimerRemainingMs,
-                    spectrum = spectrum,
+                    spectrumFlow = viewModel.spectrum,
                     trackChangeNonce = uiState.trackChangeNonce,
                     trackChangeDirection = uiState.trackChangeDirection,
                     hapticsEnabled = uiState.preferences.hapticsEnabled,
+                    graphicsQuality = uiState.preferences.graphicsQuality,
+                    batterySaverMode = uiState.preferences.batterySaverMode,
                     reducedMotion = uiState.preferences.reducedMotion,
                     onBack = { isNowPlayingOpen = false },
                     onTogglePlayPause = {
@@ -389,7 +391,7 @@ fun PlinthApp(
     if (showEqualizerSheet) {
         EqualizerBottomSheet(
             eqState = eqState,
-            spectrum = spectrum,
+            spectrumFlow = viewModel.spectrum,
             hapticsEnabled = uiState.preferences.hapticsEnabled,
             onToggleEnabled = viewModel::setEqualizerEnabled,
             onSelectPreset = viewModel::selectEqualizerPreset,
@@ -406,6 +408,9 @@ fun PlinthApp(
             onSetLanguage = viewModel::setLanguage,
             onSetSleepTimerMinutes = viewModel::setSleepTimerMinutes,
             onSetHaptics = viewModel::setHapticsEnabled,
+            onSetUiSounds = viewModel::setUiSoundsEnabled,
+            onSetGraphicsQuality = viewModel::setGraphicsQuality,
+            onSetBatterySaver = viewModel::setBatterySaverMode,
             onSetReducedMotion = viewModel::setReducedMotion,
             onImportAudio = ::triggerImportAudio,
             onScanDevice = ::triggerScanDevice,

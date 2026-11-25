@@ -4,97 +4,95 @@ import {
   createBrushedMetalMaps,
   createKnurlNormalMap,
   createRubberMatRoughnessMap,
-  createVinylGrooveMaps,
 } from './textures.js';
 import { createPlinthAssembly, PLATTER_CENTER } from './plinth.js';
 import { createVinylPlatterAssembly } from './vinyl.js';
 import { computeGrooveYaw, createTonearmAssembly } from './tonearm.js';
 
-const STANDARD_33_RPM_RAD_PER_SEC = (33.333333 * Math.PI * 2) / 60; // ~3.49066 rad/s
+const STANDARD_33_RPM_RAD_PER_SEC = (33.333333 * Math.PI * 2) / 60; // 33⅓ RPM (~3.49066 rad/s)
 
 const canvas = document.getElementById('turntable-canvas');
 
-// --- 1. High-DPI Hardware WebGL Renderer ---
-const renderer = new THREE.WebGLRenderer({
-  canvas,
-  antialias: true,
-  alpha: true,
-  powerPreference: 'high-performance',
-});
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.25));
-renderer.setSize(window.innerWidth, window.innerHeight, false);
+function notifyBridge(fnName, arg) {
+  try {
+    if (window.AndroidBridge && typeof window.AndroidBridge[fnName] === 'function') {
+      if (arg !== undefined) window.AndroidBridge[fnName](arg);
+      else window.AndroidBridge[fnName]();
+    }
+  } catch (_) {}
+}
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    alpha: true,
+    powerPreference: 'default',
+  });
+} catch (err) {
+  notifyBridge('onWebGLFailed', String(err || 'init_error'));
+  throw err;
+}
+
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.08;
+renderer.toneMappingExposure = 1.04;
 
-// --- 2. Scene & Studio Environment Reflection Map ---
 const scene = new THREE.Scene();
-const pmremGenerator = new THREE.PMREMGenerator(renderer);
-pmremGenerator.compileEquirectangularShader();
-const roomEnv = new RoomEnvironment();
-const envRT = pmremGenerator.fromScene(roomEnv, 0.04);
-scene.environment = envRT.texture;
-roomEnv.dispose();
-pmremGenerator.dispose();
 
-// --- 3. Studio Product Photography Camera (Subtle 3D Hero Elevation) ---
-const camera = new THREE.PerspectiveCamera(
-  34,
-  window.innerWidth / Math.max(1, window.innerHeight),
-  0.1,
-  30,
-);
-const baseCamPos = new THREE.Vector3(0.0, 8.15, 2.48);
-const baseLookAt = new THREE.Vector3(0.0, 0.14, 0.04);
-camera.position.copy(baseCamPos);
-camera.lookAt(baseLookAt);
+// Bake lightweight Studio RoomEnvironment once & dispose generator immediately
+let envRT = null;
+function ensureEnvMap() {
+  if (envRT) return envRT.texture;
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  pmremGenerator.compileEquirectangularShader();
+  const roomEnv = new RoomEnvironment();
+  envRT = pmremGenerator.fromScene(roomEnv, 0.04);
+  roomEnv.dispose();
+  pmremGenerator.dispose();
+  return envRT.texture;
+}
+scene.environment = ensureEnvMap();
 
-// --- 4. Multi-Point Studio Photography Lighting Rig ---
-const hemiLight = new THREE.HemisphereLight(0xffffff, 0xc9d2e2, 0.65);
+// --- Strict Horizontal Top-Down Orthographic Camera (~88.3 deg vertical overhead) ---
+// Zero perspective warping or tilting; 3D relief & height read cleanly through lighting & cast shadows.
+const camera = new THREE.OrthographicCamera(-2.4, 2.4, 2.4, -2.4, 0.1, 30);
+camera.position.set(0.0, 12.0, 0.36);
+camera.lookAt(new THREE.Vector3(0.0, 0.12, 0.0));
+
+// --- Studio Lighting Rig Sculpting Horizontal Elevation & Material Contrast ---
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0xc8d0de, 0.72);
 scene.add(hemiLight);
 
-// Primary overhead-left softbox Key Light casting real soft shadows
-const keyLight = new THREE.DirectionalLight(0xfffaf2, 2.35);
-keyLight.position.set(-3.4, 7.2, 2.6);
+const keyLight = new THREE.DirectionalLight(0xfffcf8, 2.15);
+keyLight.position.set(-4.0, 7.8, 3.0);
 keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.mapSize.set(1024, 1024);
 keyLight.shadow.camera.near = 1.5;
 keyLight.shadow.camera.far = 16;
-keyLight.shadow.camera.left = -3.4;
-keyLight.shadow.camera.right = 3.4;
-keyLight.shadow.camera.top = 3.4;
-keyLight.shadow.camera.bottom = -3.4;
-keyLight.shadow.bias = -0.0004;
+keyLight.shadow.camera.left = -3.1;
+keyLight.shadow.camera.right = 3.1;
+keyLight.shadow.camera.top = 3.1;
+keyLight.shadow.camera.bottom = -3.1;
+keyLight.shadow.bias = -0.0005;
 keyLight.shadow.normalBias = 0.012;
 scene.add(keyLight);
 
-// Cool Fill Light from front-right
-const fillLight = new THREE.DirectionalLight(0xd9e4f5, 0.95);
-fillLight.position.set(4.2, 4.0, 3.8);
+const fillLight = new THREE.DirectionalLight(0xdce6f5, 0.90);
+fillLight.position.set(4.2, 4.6, 3.4);
 scene.add(fillLight);
 
-// Crisp Grazing Rim Light from back-right separating tonearm & vinyl bevel
-const rimLight = new THREE.DirectionalLight(0xffffff, 1.45);
-rimLight.position.set(2.8, 3.2, -4.4);
+const rimLight = new THREE.DirectionalLight(0xffffff, 1.30);
+rimLight.position.set(2.8, 4.2, -4.2);
 scene.add(rimLight);
 
-// Subtle specular grazing spot across the vinyl grooves
-const vinylHighlight = new THREE.SpotLight(0xfffdf8, 4.2, 14, Math.PI / 4, 0.65, 1.2);
-vinylHighlight.position.set(-2.0, 4.4, -2.5);
-vinylHighlight.target.position.copy(PLATTER_CENTER);
-scene.add(vinylHighlight);
-scene.add(vinylHighlight.target);
-
-// --- 5. Build Modular 3D Turntable Hardware ---
+// --- Build Modular 3D Hardware ---
 const maps = {
   ...(() => {
     const b = createBrushedMetalMaps();
     return { brushedRoughness: b.roughnessMap, brushedNormal: b.normalMap };
-  })(),
-  ...(() => {
-    const v = createVinylGrooveMaps();
-    return { vinylNormal: v.normalMap, vinylRoughness: v.roughnessMap };
   })(),
   knurlNormal: createKnurlNormalMap(),
   rubberRoughness: createRubberMatRoughnessMap(),
@@ -112,57 +110,126 @@ turntableGroup.add(platter.root);
 const tonearm = createTonearmAssembly(maps);
 turntableGroup.add(tonearm.root);
 
-// Soft ambient studio ground shadow catcher beneath the feet
+// Soft live ground shadow catcher for High/Medium modes
 const shadowFloor = new THREE.Mesh(
-  new THREE.PlaneGeometry(10, 10),
-  new THREE.ShadowMaterial({ opacity: 0.16 }),
+  new THREE.PlaneGeometry(8, 8),
+  new THREE.ShadowMaterial({ opacity: 0.14 }),
 );
 shadowFloor.rotation.x = -Math.PI / 2;
-shadowFloor.position.y = -0.296;
+shadowFloor.position.y = -0.22;
 shadowFloor.receiveShadow = true;
 turntableGroup.add(shadowFloor);
 
-// --- 6. Mechanical & Physics State Machine ---
+// --- Adaptive Quality & Mobile Power State ---
 const state = {
   isPlaying: false,
   progress: 0,
   volume: 0.78,
   isDark: false,
   reducedMotion: false,
+  batterySaver: false,
+  requestedQuality: 'AUTO', // AUTO | HIGH | MEDIUM | LOW
+  activeTier: 'HIGH',
   pausedRendering: false,
+  contextLost: false,
 
-  // Dynamic physics state
+  // Kinematics
   angularVelocity: 0,
   vinylAngle: 0,
   armYaw: tonearm.REST_YAW,
-  armLift: 0.02, // 0 = seated on vinyl, > 0 = lifted upward (positive lift rotates arm UP)
-  armPhase: 'PARKED', // PARKED | LIFTING_TO_PLAY | SWINGING_IN | DROPPING | TRACKING | LIFTED_PAUSED | RETURNING
+  armLift: 0.02,
+  armPhase: 'PARKED',
   buttonDepress: 0,
   swapOffset: 0,
-  swapVelocity: 0,
   isScratching: false,
   isDraggingKnob: false,
-  camTiltX: 0,
-  camTiltY: 0,
-  targetCamTiltX: 0,
-  targetCamTiltY: 0,
+  needsImmediateFrame: true,
 };
+
+let minFrameIntervalMs = 0; // 0 = full VSync (60/120fps), 20 = ~50fps, 33 = 30fps
+
+function resolveInitialAutoTier() {
+  const cores = navigator.hardwareConcurrency || 4;
+  const dpr = window.devicePixelRatio || 1;
+  return (cores >= 6 && dpr >= 1.8) ? 'HIGH' : 'MEDIUM';
+}
+
+let currentAutoTier = resolveInitialAutoTier();
+let frameAccumMs = 0;
+let frameSampleCount = 0;
+
+function applyQualityTier(tier) {
+  if (state.activeTier === tier && !state.needsImmediateFrame) return;
+  state.activeTier = tier;
+
+  const nativeDpr = window.devicePixelRatio || 1;
+  if (tier === 'LOW') {
+    renderer.setPixelRatio(Math.min(nativeDpr, 1.0));
+    renderer.shadowMap.enabled = false;
+    shadowFloor.visible = false;
+    scene.environment = null;
+    minFrameIntervalMs = 32; // Stable ~30 FPS
+  } else if (tier === 'MEDIUM') {
+    renderer.setPixelRatio(Math.min(nativeDpr, 1.25));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    if (keyLight.shadow.mapSize.width !== 512) {
+      keyLight.shadow.mapSize.set(512, 512);
+      if (keyLight.shadow.map) {
+        keyLight.shadow.map.dispose();
+        keyLight.shadow.map = null;
+      }
+    }
+    shadowFloor.visible = true;
+    scene.environment = ensureEnvMap();
+    minFrameIntervalMs = 19; // Target 45-60 FPS
+  } else {
+    // HIGH
+    renderer.setPixelRatio(Math.min(nativeDpr, 1.5));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    if (keyLight.shadow.mapSize.width !== 1024) {
+      keyLight.shadow.mapSize.set(1024, 1024);
+      if (keyLight.shadow.map) {
+        keyLight.shadow.map.dispose();
+        keyLight.shadow.map = null;
+      }
+    }
+    shadowFloor.visible = true;
+    scene.environment = ensureEnvMap();
+    minFrameIntervalMs = 0;
+  }
+  handleResize();
+  state.needsImmediateFrame = true;
+}
+
+function refreshEffectiveTier() {
+  if (state.batterySaver) {
+    applyQualityTier('LOW');
+    return;
+  }
+  if (state.requestedQuality === 'AUTO') {
+    applyQualityTier(currentAutoTier);
+  } else {
+    applyQualityTier(state.requestedQuality);
+  }
+}
 
 function damp(current, target, lambda, dt) {
   return current + (target - current) * (1 - Math.exp(-lambda * dt));
 }
 
-// --- 7. Touch Raycasting (Scratch Vinyl, Press 3D Start/Stop, Turn 3D Volume Dial, Camera Tilt) ---
+// --- Touch Raycasting (Scratch Deep-Black Vinyl, Press Start/Stop, Turn Volume Dial) ---
+// Strictly horizontal turntable: NO tilt rotation drag!
 const raycaster = new THREE.Raycaster();
 const pointerNDC = new THREE.Vector2();
 const scratchPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -PLATTER_CENTER.y - 0.088);
 const scratchHit = new THREE.Vector3();
 
 let activePointerId = null;
-let dragMode = 'NONE'; // SCRATCH | KNOB | TILT | BUTTON
+let dragMode = 'NONE';
 let lastScratchAngle = 0;
 let lastPointerY = 0;
-let lastPointerX = 0;
 
 function updateNDC(clientX, clientY) {
   const rect = canvas.getBoundingClientRect();
@@ -174,49 +241,44 @@ canvas.addEventListener('pointerdown', (e) => {
   if (activePointerId !== null) return;
   activePointerId = e.pointerId;
   canvas.setPointerCapture(e.pointerId);
-  lastPointerX = e.clientX;
   lastPointerY = e.clientY;
   updateNDC(e.clientX, e.clientY);
   raycaster.setFromCamera(pointerNDC, camera);
 
-  // 1. Check 3D Start/Stop Plunger Button
   if (raycaster.intersectObject(plinth.startButtonGroup, true).length > 0) {
     dragMode = 'BUTTON';
     state.buttonDepress = 1.0;
+    wakeLoop();
     return;
   }
 
-  // 2. Check 3D Rotary Volume Dial
   if (raycaster.intersectObject(plinth.volumeKnobGroup, true).length > 0) {
     dragMode = 'KNOB';
     state.isDraggingKnob = true;
+    wakeLoop();
     return;
   }
 
-  // 3. Check 3D Vinyl Platter for circular scratch/scrub
   if (raycaster.intersectObject(platter.vinylMesh, false).length > 0) {
     if (raycaster.ray.intersectPlane(scratchPlane, scratchHit)) {
       const dx = scratchHit.x - PLATTER_CENTER.x;
       const dz = scratchHit.z - PLATTER_CENTER.z;
       const dist = Math.hypot(dx, dz);
-      if (dist >= 0.22 && dist <= 1.62) {
+      if (dist >= 0.22 && dist <= 1.60) {
         dragMode = 'SCRATCH';
         state.isScratching = true;
         lastScratchAngle = Math.atan2(dz, dx);
+        wakeLoop();
         return;
       }
     }
   }
-
-  // 4. Outer chassis drag = subtle luxury studio camera inspection parallax
-  dragMode = 'TILT';
+  dragMode = 'NONE';
 });
 
 canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerId !== activePointerId) return;
+  if (e.pointerId !== activePointerId || dragMode === 'NONE') return;
   const dy = e.clientY - lastPointerY;
-  const dx = e.clientX - lastPointerX;
-  lastPointerX = e.clientX;
   lastPointerY = e.clientY;
 
   if (dragMode === 'SCRATCH') {
@@ -231,22 +293,18 @@ canvas.addEventListener('pointermove', (e) => {
       if (delta < -Math.PI) delta += Math.PI * 2;
       lastScratchAngle = angle;
 
-      // Rotating vinyl clockwise visually = -delta around +Y
       state.vinylAngle -= delta;
       const seekMs = Math.round((delta / (Math.PI * 2)) * 5500);
-      if (seekMs !== 0 && window.AndroidBridge && window.AndroidBridge.onScrubDelta) {
-        window.AndroidBridge.onScrubDelta(seekMs);
+      if (seekMs !== 0) {
+        notifyBridge('onScrubDelta', seekMs);
       }
+      wakeLoop();
     }
   } else if (dragMode === 'KNOB') {
     const nextVol = Math.max(0, Math.min(1, state.volume - dy / 170));
     state.volume = nextVol;
-    if (window.AndroidBridge && window.AndroidBridge.onVolumeChange) {
-      window.AndroidBridge.onVolumeChange(nextVol);
-    }
-  } else if (dragMode === 'TILT') {
-    state.targetCamTiltX = Math.max(-0.55, Math.min(0.55, state.targetCamTiltX + dx * 0.003));
-    state.targetCamTiltY = Math.max(-0.45, Math.min(0.45, state.targetCamTiltY + dy * 0.003));
+    notifyBridge('onVolumeChange', nextVol);
+    wakeLoop();
   }
 });
 
@@ -256,72 +314,127 @@ function endPointer(e) {
     updateNDC(e.clientX, e.clientY);
     raycaster.setFromCamera(pointerNDC, camera);
     if (raycaster.intersectObject(plinth.startButtonGroup, true).length > 0) {
-      if (window.AndroidBridge && window.AndroidBridge.onTogglePlay) {
-        window.AndroidBridge.onTogglePlay();
-      }
+      notifyBridge('onTogglePlay');
     }
   }
   state.isScratching = false;
   state.isDraggingKnob = false;
-  state.targetCamTiltX = 0;
-  state.targetCamTiltY = 0;
   dragMode = 'NONE';
   activePointerId = null;
+  wakeLoop();
 }
 
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 
-// --- 8. Responsive Viewport Framing ---
+// --- Responsive Orthographic Viewport Framing ---
 function handleResize() {
   const w = Math.max(1, window.innerWidth);
   const h = Math.max(1, window.innerHeight);
-  camera.aspect = w / h;
-  // Adapt camera distance cleanly so the full 3D Plinth never clips horizontally or vertically
-  const fitFactor = Math.max(1.0, 1.05 / Math.min(1, camera.aspect));
-  camera.position.set(
-    baseCamPos.x,
-    baseCamPos.y * fitFactor,
-    baseCamPos.z * fitFactor,
-  );
+  const aspect = w / h;
+  const baseHalfSpan = 2.34;
+
+  let halfH = baseHalfSpan;
+  let halfW = baseHalfSpan * aspect;
+  if (halfW < baseHalfSpan) {
+    halfW = baseHalfSpan;
+    halfH = baseHalfSpan / aspect;
+  }
+
+  camera.left = -halfW;
+  camera.right = halfW;
+  camera.top = halfH;
+  camera.bottom = -halfH;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h, false);
+  state.needsImmediateFrame = true;
 }
-window.addEventListener('resize', handleResize);
-handleResize();
+window.addEventListener('resize', () => {
+  handleResize();
+  wakeLoop();
+});
 
-// --- 9. Main Delta-Time Animation Loop ---
+// --- WebGL Context Loss & Restoration Handling ---
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  state.contextLost = true;
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+  notifyBridge('onWebGLContextLost');
+});
+
+canvas.addEventListener('webglcontextrestored', () => {
+  state.contextLost = false;
+  envRT = null;
+  refreshEffectiveTier();
+  notifyBridge('onWebGLContextRestored');
+  wakeLoop();
+});
+
+// --- Demand-Driven Delta-Time Animation Loop ---
 let lastTimeMs = performance.now();
+let lastRenderMs = 0;
 let rafId = null;
 
+function wakeLoop() {
+  state.needsImmediateFrame = true;
+  if (!state.pausedRendering && !state.contextLost && rafId === null) {
+    lastTimeMs = performance.now();
+    rafId = requestAnimationFrame(animate);
+  }
+}
+
 function animate(nowMs) {
-  if (state.pausedRendering) {
+  if (state.pausedRendering || state.contextLost) {
     rafId = null;
     return;
   }
-  rafId = requestAnimationFrame(animate);
+
+  const elapsedSinceRender = nowMs - lastRenderMs;
+  if (minFrameIntervalMs > 0 && !state.needsImmediateFrame && elapsedSinceRender < minFrameIntervalMs) {
+    rafId = requestAnimationFrame(animate);
+    return;
+  }
+  lastRenderMs = nowMs;
+  state.needsImmediateFrame = false;
 
   const dt = Math.min(0.05, Math.max(0.001, (nowMs - lastTimeMs) / 1000));
   lastTimeMs = nowMs;
 
+  // Rolling Auto-Quality adaptive monitor
+  if (!state.batterySaver && state.requestedQuality === 'AUTO') {
+    frameAccumMs += dt * 1000;
+    frameSampleCount += 1;
+    if (frameSampleCount >= 40) {
+      const avgMs = frameAccumMs / frameSampleCount;
+      frameAccumMs = 0;
+      frameSampleCount = 0;
+      if (avgMs > 28 && currentAutoTier === 'HIGH') {
+        currentAutoTier = 'MEDIUM';
+        applyQualityTier('MEDIUM');
+      } else if (avgMs > 36 && currentAutoTier === 'MEDIUM') {
+        currentAutoTier = 'LOW';
+        applyQualityTier('LOW');
+      }
+    }
+  }
+
   const targetGrooveYaw = computeGrooveYaw(state.progress);
 
-  // --- Mechanical Tonearm State Machine (Independent Multi-Stage Kinematics) ---
+  // --- Tonearm Multi-Stage Kinematics ---
   if (state.isPlaying || state.isScratching) {
     if (state.armPhase === 'PARKED' || state.armPhase === 'RETURNING') {
       state.armPhase = 'LIFTING_TO_PLAY';
     }
     if (state.armPhase === 'LIFTING_TO_PLAY') {
       state.armLift = damp(state.armLift, 0.145, 14, dt);
-      if (state.armLift > 0.115) {
-        state.armPhase = 'SWINGING_IN';
-      }
+      if (state.armLift > 0.115) state.armPhase = 'SWINGING_IN';
     } else if (state.armPhase === 'SWINGING_IN') {
       state.armLift = damp(state.armLift, 0.145, 12, dt);
       state.armYaw = damp(state.armYaw, targetGrooveYaw, 8.5, dt);
-      if (Math.abs(state.armYaw - targetGrooveYaw) < 0.025) {
-        state.armPhase = 'DROPPING';
-      }
+      if (Math.abs(state.armYaw - targetGrooveYaw) < 0.025) state.armPhase = 'DROPPING';
     } else if (state.armPhase === 'DROPPING' || state.armPhase === 'LIFTED_PAUSED') {
       state.armYaw = damp(state.armYaw, targetGrooveYaw, 10, dt);
       state.armLift = damp(state.armLift, 0.0, 10, dt);
@@ -330,14 +443,11 @@ function animate(nowMs) {
         state.armPhase = 'TRACKING';
       }
     } else {
-      // TRACKING: Smoothly follow playback progress across the vinyl grooves
       state.armYaw = damp(state.armYaw, targetGrooveYaw, 12, dt);
       state.armLift = damp(state.armLift, 0.0, 14, dt);
     }
   } else {
-    // Stopped or Paused
     if (state.progress <= 0.004 || state.progress >= 0.996) {
-      // End of track or reset -> lift, return to armrest, and lower onto dock
       if (state.armPhase === 'TRACKING' || state.armPhase === 'DROPPING' || state.armPhase === 'LIFTED_PAUSED') {
         state.armPhase = 'RETURNING';
       }
@@ -355,90 +465,136 @@ function animate(nowMs) {
         state.armLift = damp(state.armLift, 0.02, 8, dt);
       }
     } else {
-      // Paused mid-track -> gently lift stylus off the groove & hold position
       state.armPhase = 'LIFTED_PAUSED';
       state.armLift = damp(state.armLift, 0.11, 10, dt);
       state.armYaw = damp(state.armYaw, targetGrooveYaw, 8, dt);
     }
   }
 
-  // Apply Tonearm Hierarchy Transforms
-  // Positive lift rotates local +Z arm upward (-X rotation)
   tonearm.yawGroup.rotation.y = state.armYaw;
   tonearm.liftGroup.rotation.x = -state.armLift;
-  // Cueing lifter rises smoothly under the arm whenever lifted
   const cueOffset = Math.min(0.035, state.armLift * 0.28);
   tonearm.cueStem.position.y = 0.075 + cueOffset;
   tonearm.cueArch.position.y = 0.145 + cueOffset;
 
-  // --- 33⅓ RPM Platter Motor Spin-up & Inertia Coast-Down ---
+  // --- Exact 33⅓ RPM Vinyl Platter Motor & Inertia ---
   const platterCanSpin = state.isPlaying && !state.isScratching;
   const targetSpeed = platterCanSpin
-    ? (state.reducedMotion ? 0.65 : STANDARD_33_RPM_RAD_PER_SEC)
+    ? (state.reducedMotion ? 0.55 : STANDARD_33_RPM_RAD_PER_SEC)
     : 0;
-  const motorLambda = platterCanSpin ? 3.2 : 2.1;
+  const motorLambda = platterCanSpin ? 3.2 : 2.2;
   state.angularVelocity = damp(state.angularVelocity, targetSpeed, motorLambda, dt);
   if (Math.abs(state.angularVelocity) < 0.002 && targetSpeed === 0) {
     state.angularVelocity = 0;
   }
   state.vinylAngle = (state.vinylAngle - state.angularVelocity * dt) % (Math.PI * 2);
-  platter.spinningGroup.rotation.y = state.vinylAngle;
+  platter.setSpinAngle(state.vinylAngle);
 
-  // --- Vinyl Track Swap Elastic Slide ---
+  // --- Vinyl Swap Elastic Slide ---
   state.swapOffset = damp(state.swapOffset, 0, 11, dt);
+  if (Math.abs(state.swapOffset) < 0.0008) state.swapOffset = 0;
   platter.recordGroup.position.x = state.swapOffset;
 
-  // --- Physical Rotary Volume Knob & Start/Stop Plunger Button ---
+  // --- Physical Rotary Volume Knob & Start/Stop Plunger ---
   const targetKnobAngle = THREE.MathUtils.degToRad(135 - state.volume * 270);
   plinth.volumeKnobGroup.rotation.y = damp(plinth.volumeKnobGroup.rotation.y, targetKnobAngle, 16, dt);
 
-  const btnTargetY = (dragMode === 'BUTTON' ? -0.030 : (state.isPlaying ? -0.016 : 0.0)) + 0.18;
+  const btnTargetY = (dragMode === 'BUTTON' ? -0.028 : (state.isPlaying ? -0.015 : 0.0)) + 0.17;
   plinth.startButtonGroup.position.y = damp(plinth.startButtonGroup.position.y, btnTargetY, 22, dt);
-  const targetLed = state.isPlaying ? 1.35 : 0.0;
+  const targetLed = state.isPlaying ? 1.25 : 0.0;
   plinth.ledMat.emissiveIntensity = damp(plinth.ledMat.emissiveIntensity, targetLed, 10, dt);
 
-  // --- Subtle Camera Parallax Tilt ---
-  state.camTiltX = damp(state.camTiltX, state.targetCamTiltX, 8, dt);
-  state.camTiltY = damp(state.camTiltY, state.targetCamTiltY, 8, dt);
-  turntableGroup.rotation.y = state.camTiltX * 0.25;
-  turntableGroup.rotation.x = state.camTiltY * 0.18;
-
   renderer.render(scene, camera);
+
+  // Stop unnecessary GPU/RAF ticks automatically once paused & all mechanics settled
+  const armTargetYaw = (state.isPlaying || state.isScratching)
+    ? targetGrooveYaw
+    : ((state.progress <= 0.004 || state.progress >= 0.996) ? tonearm.REST_YAW : targetGrooveYaw);
+  const armTargetLift = (state.isPlaying || state.isScratching)
+    ? 0.0
+    : ((state.progress <= 0.004 || state.progress >= 0.996) ? 0.02 : 0.11);
+
+  const settled =
+    !state.isPlaying &&
+    !state.isScratching &&
+    !state.isDraggingKnob &&
+    dragMode !== 'BUTTON' &&
+    state.angularVelocity === 0 &&
+    state.swapOffset === 0 &&
+    Math.abs(state.armYaw - armTargetYaw) < 0.001 &&
+    Math.abs(state.armLift - armTargetLift) < 0.001 &&
+    Math.abs(plinth.volumeKnobGroup.rotation.y - targetKnobAngle) < 0.002 &&
+    Math.abs(plinth.startButtonGroup.position.y - btnTargetY) < 0.001 &&
+    Math.abs(plinth.ledMat.emissiveIntensity - targetLed) < 0.01;
+
+  if (settled) {
+    rafId = null;
+  } else {
+    rafId = requestAnimationFrame(animate);
+  }
 }
 
-rafId = requestAnimationFrame(animate);
+refreshEffectiveTier();
+wakeLoop();
 
-// --- 10. Public Bridge API called from Kotlin/Compose ---
+// --- Public Kotlin/Compose Bridge API ---
 window.plinthTurntable = {
   setState(next) {
     if (typeof next.isPlaying === 'boolean') state.isPlaying = next.isPlaying;
     if (typeof next.progress === 'number') state.progress = next.progress;
     if (typeof next.volume === 'number' && !state.isDraggingKnob) state.volume = next.volume;
     if (typeof next.reducedMotion === 'boolean') state.reducedMotion = next.reducedMotion;
+    if (typeof next.batterySaver === 'boolean') state.batterySaver = next.batterySaver;
+    if (typeof next.graphicsQuality === 'string') state.requestedQuality = next.graphicsQuality;
+
+    refreshEffectiveTier();
+
     if (typeof next.isDark === 'boolean' && next.isDark !== state.isDark) {
       state.isDark = next.isDark;
       plinth.setTheme(next.isDark);
       platter.setTheme(next.isDark);
       tonearm.setTheme(next.isDark);
-      hemiLight.intensity = next.isDark ? 0.42 : 0.65;
-      keyLight.intensity = next.isDark ? 2.65 : 2.35;
-      fillLight.intensity = next.isDark ? 1.15 : 0.95;
-      shadowFloor.material.opacity = next.isDark ? 0.36 : 0.16;
+      hemiLight.intensity = next.isDark ? 0.48 : 0.72;
+      keyLight.intensity = next.isDark ? 2.45 : 2.15;
+      fillLight.intensity = next.isDark ? 1.05 : 0.90;
+      shadowFloor.material.opacity = next.isDark ? 0.28 : 0.14;
     }
     if (next.artworkDataUri !== undefined) {
       platter.setArtwork(next.artworkDataUri, state.isDark);
     }
+    wakeLoop();
   },
   triggerTrackSwap(direction) {
-    if (!state.reducedMotion) {
+    if (!state.reducedMotion && !state.batterySaver) {
       state.swapOffset = (direction >= 0 ? 1 : -1) * 0.85;
     }
+    wakeLoop();
   },
   setPaused(paused) {
     state.pausedRendering = !!paused;
-    if (!state.pausedRendering && rafId === null) {
-      lastTimeMs = performance.now();
-      rafId = requestAnimationFrame(animate);
+    if (state.pausedRendering && rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    } else if (!state.pausedRendering) {
+      wakeLoop();
     }
+  },
+  dispose() {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    plinth.dispose();
+    platter.dispose();
+    tonearm.dispose();
+    maps.brushedRoughness.dispose();
+    maps.brushedNormal.dispose();
+    maps.knurlNormal.dispose();
+    maps.rubberRoughness.dispose();
+    if (envRT) {
+      envRT.dispose();
+      envRT = null;
+    }
+    renderer.dispose();
   },
 };
