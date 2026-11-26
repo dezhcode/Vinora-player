@@ -8,8 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -33,6 +31,7 @@ import com.example.audio.FeedbackEvent
 import com.example.audio.PlinthFeedback
 import com.example.data.Track
 import com.example.ui.components.CurvedDiscCarousel
+import com.example.ui.components.PlinthIcons
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
 
@@ -88,7 +87,7 @@ fun ExploreScreen(
                         .testTag("explore_menu_button"),
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.MoreHoriz,
+                        imageVector = PlinthIcons.MoreHoriz,
                         contentDescription = stringResource(R.string.cd_menu),
                         tint = palette.inkPrimary,
                         modifier = Modifier.size(24.dp),

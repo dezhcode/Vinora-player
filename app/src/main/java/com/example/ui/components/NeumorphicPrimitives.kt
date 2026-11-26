@@ -2,7 +2,6 @@ package com.example.ui.components
 
 import android.graphics.BlurMaskFilter
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -24,7 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -33,23 +32,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.example.audio.FeedbackEvent
 import com.example.audio.PlinthFeedback
 import com.example.ui.theme.LocalPlinthColors
 
 /**
  * Draws realistic soft dual-source studio shadows (top-left specular lift + bottom-right ambient cast)
- * using native Canvas blur masks for authentic soft neumorphism & industrial depth.
+ * using cached native Canvas blur masks via drawWithCache so zero allocations occur per frame.
  */
 fun Modifier.plinthSoftShadow(
     cornerRadius: Dp,
@@ -58,45 +60,56 @@ fun Modifier.plinthSoftShadow(
     elevation: Dp = 10.dp,
     darkAlpha: Float = 0.42f,
     lightAlpha: Float = 0.85f,
-): Modifier = this.drawBehind {
+): Modifier = this.drawWithCache {
     val blurPx = (elevation.toPx() * 1.65f).coerceAtLeast(1f)
     val offsetPx = elevation.toPx() * 0.55f
     val radiusPx = cornerRadius.toPx()
 
-    drawIntoCanvas { canvas ->
-        val darkPaint = Paint().apply {
+    val darkPaint = if (darkAlpha > 0.005f) {
+        Paint().apply {
             asFrameworkPaint().apply {
                 isAntiAlias = true
                 color = shadowDark.copy(alpha = darkAlpha).toArgb()
                 maskFilter = BlurMaskFilter(blurPx, BlurMaskFilter.Blur.NORMAL)
             }
         }
-        canvas.drawRoundRect(
-            left = offsetPx * 0.6f,
-            top = offsetPx,
-            right = size.width + offsetPx * 0.6f,
-            bottom = size.height + offsetPx,
-            radiusX = radiusPx,
-            radiusY = radiusPx,
-            paint = darkPaint,
-        )
+    } else null
 
-        val lightPaint = Paint().apply {
+    val lightPaint = if (lightAlpha > 0.005f) {
+        Paint().apply {
             asFrameworkPaint().apply {
                 isAntiAlias = true
                 color = shadowLight.copy(alpha = lightAlpha).toArgb()
-                maskFilter = BlurMaskFilter(blurPx * 0.85f, BlurMaskFilter.Blur.NORMAL)
+                maskFilter = BlurMaskFilter((blurPx * 0.85f).coerceAtLeast(1f), BlurMaskFilter.Blur.NORMAL)
             }
         }
-        canvas.drawRoundRect(
-            left = -offsetPx * 0.5f,
-            top = -offsetPx * 0.65f,
-            right = size.width - offsetPx * 0.5f,
-            bottom = size.height - offsetPx * 0.65f,
-            radiusX = radiusPx,
-            radiusY = radiusPx,
-            paint = lightPaint,
-        )
+    } else null
+
+    onDrawBehind {
+        drawIntoCanvas { canvas ->
+            if (darkPaint != null) {
+                canvas.drawRoundRect(
+                    left = offsetPx * 0.6f,
+                    top = offsetPx,
+                    right = size.width + offsetPx * 0.6f,
+                    bottom = size.height + offsetPx,
+                    radiusX = radiusPx,
+                    radiusY = radiusPx,
+                    paint = darkPaint,
+                )
+            }
+            if (lightPaint != null) {
+                canvas.drawRoundRect(
+                    left = -offsetPx * 0.5f,
+                    top = -offsetPx * 0.65f,
+                    right = size.width - offsetPx * 0.5f,
+                    bottom = size.height - offsetPx * 0.65f,
+                    radiusX = radiusPx,
+                    radiusY = radiusPx,
+                    paint = lightPaint,
+                )
+            }
+        }
     }
 }
 
@@ -115,51 +128,56 @@ fun TactileRoundButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
-    val pressTravelDp by animateDpAsState(
-        targetValue = if (pressed) 3.5.dp else 0.dp,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow),
-        label = "roundBtnTravel",
-    )
-    val tiltDeg by animateFloatAsState(
-        targetValue = if (pressed) -5.5f else 0f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
-        label = "roundBtnTilt",
-    )
-    val shadowElev by animateDpAsState(
-        targetValue = if (pressed) 1.5.dp else 10.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "roundBtnElev",
+    val pressProgress by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.68f, stiffness = Spring.StiffnessMedium),
+        label = "roundBtnPress",
     )
 
-    val capBrush = if (pressed) {
-        Brush.radialGradient(
-            colors = listOf(palette.buttonPressedBottom, palette.buttonPressedTop),
-            center = Offset(90f, 90f),
-            radius = 220f,
-        )
-    } else {
+    val capBrush = remember(palette, pressed) {
+        if (pressed) {
+            Brush.radialGradient(
+                colors = listOf(palette.buttonPressedBottom, palette.buttonPressedTop),
+                center = Offset(90f, 90f),
+                radius = 220f,
+            )
+        } else {
+            Brush.linearGradient(
+                colors = listOf(palette.buttonTop, palette.buttonBottom),
+                start = Offset.Zero,
+                end = Offset(180f, 220f),
+            )
+        }
+    }
+
+    val bezelRimBrush = remember(palette) {
         Brush.linearGradient(
-            colors = listOf(palette.buttonTop, palette.buttonBottom),
+            colors = listOf(
+                palette.plinthEdgeShadow.copy(alpha = 0.85f),
+                palette.plinthEdgeLight.copy(alpha = 0.95f),
+            ),
             start = Offset.Zero,
-            end = Offset(180f, 220f),
+            end = Offset(180f, 200f),
         )
     }
 
-    val bezelRimBrush = Brush.linearGradient(
-        colors = listOf(
-            palette.plinthEdgeShadow.copy(alpha = 0.85f),
-            palette.plinthEdgeLight.copy(alpha = 0.95f),
-        ),
-        start = Offset.Zero,
-        end = Offset(180f, 200f),
-    )
+    val skirtBrush = remember(palette) {
+        Brush.verticalGradient(
+            colors = listOf(
+                palette.plinthEdgeLight.copy(alpha = 0.65f),
+                palette.plinthEdgeShadow.copy(alpha = 0.95f),
+            ),
+        )
+    }
 
-    val skirtBrush = Brush.verticalGradient(
-        colors = listOf(
-            palette.plinthEdgeLight.copy(alpha = 0.65f),
-            palette.plinthEdgeShadow.copy(alpha = 0.95f),
-        ),
-    )
+    val borderBrush = remember(palette, pressed, active) {
+        Brush.linearGradient(
+            listOf(
+                palette.plinthEdgeLight.copy(alpha = if (pressed) 0.3f else 0.95f),
+                if (active) palette.inkPrimary.copy(alpha = 0.25f) else palette.plinthEdgeShadow.copy(alpha = 0.45f),
+            )
+        )
+    }
 
     // Outer recessed chassis well
     Box(
@@ -188,16 +206,19 @@ fun TactileRoundButton(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    translationY = pressTravelDp.toPx()
-                    rotationX = tiltDeg
+                    translationY = (3.2f * pressProgress).dp.toPx()
+                    rotationX = -5.0f * pressProgress
+                    val s = 1f - 0.025f * pressProgress
+                    scaleX = s
+                    scaleY = s
                     cameraDistance = 12f * density
                 }
                 .plinthSoftShadow(
                     cornerRadius = size / 2,
                     shadowDark = palette.shadowDark,
                     shadowLight = palette.shadowLight,
-                    elevation = shadowElev,
-                    darkAlpha = if (palette.isDark) 0.82f else 0.56f,
+                    elevation = 9.dp,
+                    darkAlpha = if (palette.isDark) 0.78f else 0.52f,
                     lightAlpha = if (palette.isDark) 0.16f else 0.78f,
                 )
                 .clip(CircleShape)
@@ -207,12 +228,7 @@ fun TactileRoundButton(
                 .background(capBrush)
                 .border(
                     width = 1.dp,
-                    brush = Brush.linearGradient(
-                        listOf(
-                            palette.plinthEdgeLight.copy(alpha = if (pressed) 0.3f else 0.95f),
-                            if (active) palette.inkPrimary.copy(alpha = 0.25f) else palette.plinthEdgeShadow.copy(alpha = 0.45f),
-                        )
-                    ),
+                    brush = borderBrush,
                     shape = CircleShape,
                 ),
             content = content,
@@ -235,39 +251,42 @@ fun TactileCapsuleButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
-    val pressTravelDp by animateDpAsState(
-        targetValue = if (pressed) 2.8.dp else 0.dp,
-        animationSpec = spring(dampingRatio = 0.58f, stiffness = Spring.StiffnessMediumLow),
-        label = "capsuleTravel",
-    )
-    val tiltDeg by animateFloatAsState(
-        targetValue = if (pressed) -4.2f else 0f,
-        animationSpec = spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMedium),
-        label = "capsuleTilt",
-    )
-    val shadowElev by animateDpAsState(
-        targetValue = if (pressed) 1.5.dp else 7.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "capsuleElev",
+    val pressProgress by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.68f, stiffness = Spring.StiffnessMedium),
+        label = "capsuleBtnPress",
     )
 
-    val outerShape = RoundedCornerShape(cornerRadius)
-    val innerShape = RoundedCornerShape((cornerRadius - 2.dp).coerceAtLeast(6.dp))
+    val outerShape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
+    val innerShape = remember(cornerRadius) { RoundedCornerShape((cornerRadius - 2.dp).coerceAtLeast(6.dp)) }
 
-    val fillBrush = if (pressed) {
-        Brush.verticalGradient(listOf(palette.buttonPressedTop, palette.buttonPressedBottom))
-    } else if (active) {
-        Brush.verticalGradient(listOf(palette.inkPrimary.copy(alpha = 0.13f), palette.buttonBottom))
-    } else {
-        Brush.verticalGradient(listOf(palette.buttonTop, palette.buttonBottom))
+    val fillBrush = remember(palette, pressed, active) {
+        if (pressed) {
+            Brush.verticalGradient(listOf(palette.buttonPressedTop, palette.buttonPressedBottom))
+        } else if (active) {
+            Brush.verticalGradient(listOf(palette.inkPrimary.copy(alpha = 0.13f), palette.buttonBottom))
+        } else {
+            Brush.verticalGradient(listOf(palette.buttonTop, palette.buttonBottom))
+        }
     }
 
-    val skirtBrush = Brush.verticalGradient(
-        listOf(
-            palette.plinthEdgeLight.copy(alpha = 0.6f),
-            palette.plinthEdgeShadow.copy(alpha = 0.9f),
-        ),
-    )
+    val skirtBrush = remember(palette) {
+        Brush.verticalGradient(
+            listOf(
+                palette.plinthEdgeLight.copy(alpha = 0.6f),
+                palette.plinthEdgeShadow.copy(alpha = 0.9f),
+            ),
+        )
+    }
+
+    val borderBrush = remember(palette, pressed) {
+        Brush.verticalGradient(
+            listOf(
+                palette.plinthEdgeLight.copy(alpha = if (pressed) 0.2f else 0.9f),
+                palette.plinthEdgeShadow.copy(alpha = 0.35f),
+            )
+        )
+    }
 
     // Recessed chassis bezel housing
     Box(
@@ -293,17 +312,20 @@ fun TactileCapsuleButton(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .graphicsLayer {
-                    translationY = pressTravelDp.toPx()
-                    rotationX = tiltDeg
+                    translationY = (2.6f * pressProgress).dp.toPx()
+                    rotationX = -4.0f * pressProgress
+                    val s = 1f - 0.02f * pressProgress
+                    scaleX = s
+                    scaleY = s
                     cameraDistance = 12f * density
                 }
                 .plinthSoftShadow(
                     cornerRadius = cornerRadius,
                     shadowDark = palette.shadowDark,
                     shadowLight = palette.shadowLight,
-                    elevation = shadowElev,
-                    darkAlpha = if (palette.isDark) 0.72f else 0.45f,
-                    lightAlpha = if (palette.isDark) 0.14f else 0.8f,
+                    elevation = 6.dp,
+                    darkAlpha = if (palette.isDark) 0.68f else 0.42f,
+                    lightAlpha = if (palette.isDark) 0.14f else 0.78f,
                 )
                 .clip(innerShape)
                 .background(skirtBrush)
@@ -312,12 +334,7 @@ fun TactileCapsuleButton(
                 .background(fillBrush)
                 .border(
                     width = 0.8.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            palette.plinthEdgeLight.copy(alpha = if (pressed) 0.2f else 0.9f),
-                            palette.plinthEdgeShadow.copy(alpha = 0.35f),
-                        )
-                    ),
+                    brush = borderBrush,
                     shape = innerShape,
                 ),
             content = content,
@@ -421,19 +438,42 @@ fun CircularArtworkDisc(
     showInnerRing: Boolean = true,
 ) {
     val palette = LocalPlinthColors.current
+    val context = LocalContext.current
+    val discBgBrush = remember(palette) {
+        Brush.radialGradient(colors = listOf(palette.plinthTop, palette.plinthBottom))
+    }
+    val rimBrush = remember {
+        Brush.linearGradient(
+            colors = listOf(
+                Color.White.copy(alpha = 0.55f),
+                Color.Transparent,
+                Color.Black.copy(alpha = 0.18f),
+            )
+        )
+    }
+    val rimStroke = remember { Stroke(width = 2f) }
+    val fallbackStroke = remember { Stroke(width = 1.5f) }
+    val imageModel = remember(context, artworkUri) {
+        if (artworkUri.isNullOrBlank()) {
+            null
+        } else {
+            ImageRequest.Builder(context)
+                .data(artworkUri)
+                .size(240)
+                .crossfade(false)
+                .build()
+        }
+    }
+
     Box(
         modifier = modifier
             .clip(CircleShape)
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(palette.plinthTop, palette.plinthBottom)
-                )
-            ),
+            .background(discBgBrush),
         contentAlignment = Alignment.Center,
     ) {
-        if (!artworkUri.isNullOrBlank()) {
+        if (imageModel != null) {
             AsyncImage(
-                model = artworkUri,
+                model = imageModel,
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize().clip(CircleShape),
@@ -445,7 +485,7 @@ fun CircularArtworkDisc(
                 drawCircle(
                     color = Color(0xFF282E3A),
                     radius = size.minDimension * 0.36f,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.5f),
+                    style = fallbackStroke,
                 )
                 drawCircle(
                     color = palette.plinthTop,
@@ -461,15 +501,9 @@ fun CircularArtworkDisc(
             Canvas(modifier = Modifier.fillMaxSize()) {
                 // Subtle glass/sleeve rim light
                 drawCircle(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = 0.55f),
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.18f),
-                        )
-                    ),
+                    brush = rimBrush,
                     radius = size.minDimension / 2f - 1f,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f),
+                    style = rimStroke,
                 )
             }
         }

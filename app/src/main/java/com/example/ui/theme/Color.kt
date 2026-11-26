@@ -54,12 +54,6 @@ val TitaniumAccent = Color(0xFFDCE4F2)
 val TitaniumWarmBrass = Color(0xFFD9B075)
 
 // Shared Vinyl Physical Constants
-val VinylObsidianCore = Color(0xFF090A0D)
-val VinylObsidianMid = Color(0xFF13161D)
-val VinylObsidianEdge = Color(0xFF050608)
-val TonearmCarbon = Color(0xFF171A20)
-val TonearmHighlight = Color(0xFF474F5F)
-val StylusCopper = Color(0xFFC96548)
 val FavoriteCoral = Color(0xFFD9535F)
 
 @Immutable

@@ -27,16 +27,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
-import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
@@ -52,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,6 +65,7 @@ import com.example.data.FolderGroup
 import com.example.data.PlaylistSummary
 import com.example.data.Track
 import com.example.ui.components.CircularArtworkDisc
+import com.example.ui.components.PlinthIcons
 import com.example.ui.components.TactileCapsuleButton
 import com.example.ui.components.plinthSoftShadow
 import com.example.ui.theme.LocalAppStrings
@@ -112,7 +108,7 @@ fun LibraryScreen(
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
 
-    var selectedTab by remember { mutableStateOf(LibraryTab.SONGS) }
+    var selectedTab by rememberSaveable { mutableStateOf(LibraryTab.SONGS) }
     var searchQuery by remember { mutableStateOf("") }
     var showSearch by remember(initialSearchFocused) { mutableStateOf(initialSearchFocused) }
     var activeDetail by remember { mutableStateOf<LibraryDetail?>(null) }
@@ -250,7 +246,7 @@ fun LibraryScreen(
                                             modifier = Modifier.size(44.dp),
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Rounded.DeleteOutline,
+                                                imageVector = PlinthIcons.DeleteOutline,
                                                 contentDescription = strings.delete,
                                                 tint = palette.inkSecondary,
                                             )
@@ -333,7 +329,7 @@ fun LibraryScreen(
                     modifier = Modifier.size(48.dp).testTag("library_import_button"),
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.AudioFile,
+                        imageVector = PlinthIcons.AudioFile,
                         contentDescription = strings.importAudio,
                         tint = palette.inkPrimary,
                     )
@@ -346,7 +342,7 @@ fun LibraryScreen(
                     modifier = Modifier.size(48.dp).testTag("library_scan_button"),
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.FolderOpen,
+                        imageVector = PlinthIcons.FolderOpen,
                         contentDescription = strings.scanDevice,
                         tint = palette.inkPrimary,
                     )
@@ -605,7 +601,7 @@ fun LibraryScreen(
                                         .border(1.dp, palette.hairline, CircleShape),
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Rounded.FolderOpen,
+                                        imageVector = PlinthIcons.FolderOpen,
                                         contentDescription = folder.name,
                                         tint = palette.inkPrimary,
                                         modifier = Modifier.size(22.dp),
@@ -706,7 +702,7 @@ fun LibraryScreen(
                                     modifier = Modifier.size(48.dp),
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Rounded.DeleteOutline,
+                                        imageVector = PlinthIcons.DeleteOutline,
                                         contentDescription = strings.delete,
                                         tint = palette.inkSecondary,
                                     )
@@ -805,7 +801,7 @@ private fun TrackTrailingActions(
                 DropdownMenuItem(
                     text = { Text(strings.playNext, color = palette.inkPrimary) },
                     leadingIcon = {
-                        Icon(Icons.AutoMirrored.Rounded.PlaylistPlay, null, tint = palette.inkPrimary)
+                        Icon(PlinthIcons.PlaylistPlay, null, tint = palette.inkPrimary)
                     },
                     onClick = {
                         menuExpanded = false
@@ -817,7 +813,7 @@ private fun TrackTrailingActions(
                 DropdownMenuItem(
                     text = { Text(strings.addToQueue, color = palette.inkPrimary) },
                     leadingIcon = {
-                        Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = palette.inkPrimary)
+                        Icon(PlinthIcons.QueueMusic, null, tint = palette.inkPrimary)
                     },
                     onClick = {
                         menuExpanded = false
@@ -829,7 +825,7 @@ private fun TrackTrailingActions(
                 DropdownMenuItem(
                     text = { Text(strings.addToPlaylist, color = palette.inkPrimary) },
                     leadingIcon = {
-                        Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, tint = palette.inkPrimary)
+                        Icon(PlinthIcons.PlaylistAdd, null, tint = palette.inkPrimary)
                     },
                     onClick = {
                         menuExpanded = false

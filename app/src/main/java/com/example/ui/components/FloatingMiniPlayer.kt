@@ -42,12 +42,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.audio.FeedbackEvent
 import com.example.audio.PlinthFeedback
 import com.example.data.Track
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Floating tactile capsule Mini Player with miniature spinning vinyl disc,
@@ -64,6 +66,8 @@ fun FloatingMiniPlayer(
     onTogglePlayPause: () -> Unit,
     onExpand: () -> Unit,
     modifier: Modifier = Modifier,
+    positionMsFlow: StateFlow<Long>? = null,
+    durationMs: Long = 1L,
 ) {
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
@@ -205,23 +209,46 @@ fun FloatingMiniPlayer(
             }
         }
 
-        // Ultra-thin bottom hairline progress track
-        Canvas(
+        // Ultra-thin bottom hairline progress track (isolated from parent recomposition)
+        MiniPlayerProgressTrack(
+            fallbackProgress = progressFraction,
+            positionMsFlow = positionMsFlow,
+            durationMs = durationMs,
+            trackColor = palette.hairline.copy(alpha = 0.55f),
+            fillColor = palette.inkPrimary.copy(alpha = 0.72f),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(horizontal = 24.dp)
                 .height(2.5.dp),
-        ) {
-            drawRect(
-                color = palette.hairline.copy(alpha = 0.55f),
-                size = Size(size.width, size.height),
-            )
-            drawRect(
-                color = palette.inkPrimary.copy(alpha = 0.72f),
-                topLeft = Offset.Zero,
-                size = Size(size.width * progressFraction.coerceIn(0f, 1f), size.height),
-            )
-        }
+        )
+    }
+}
+
+@Composable
+private fun MiniPlayerProgressTrack(
+    fallbackProgress: Float,
+    positionMsFlow: StateFlow<Long>?,
+    durationMs: Long,
+    trackColor: Color,
+    fillColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val livePos = positionMsFlow?.collectAsStateWithLifecycle()?.value
+    val fraction = if (livePos != null) {
+        (livePos.toFloat() / durationMs.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1f)
+    } else {
+        fallbackProgress.coerceIn(0f, 1f)
+    }
+    Canvas(modifier = modifier) {
+        drawRect(
+            color = trackColor,
+            size = Size(size.width, size.height),
+        )
+        drawRect(
+            color = fillColor,
+            topLeft = Offset.Zero,
+            size = Size(size.width * fraction, size.height),
+        )
     }
 }

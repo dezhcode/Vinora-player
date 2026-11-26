@@ -59,9 +59,6 @@ interface MusicDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertImportedTracks(tracks: List<ImportedTrackEntity>)
 
-    @Query("DELETE FROM imported_tracks WHERE id = :id")
-    suspend fun deleteImportedTrack(id: String)
-
     @Query("SELECT trackId FROM favorites ORDER BY addedAt DESC")
     fun observeFavoriteIds(): Flow<List<String>>
 

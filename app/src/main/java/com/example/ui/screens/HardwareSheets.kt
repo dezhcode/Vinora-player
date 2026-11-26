@@ -32,10 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.BookmarkAdd
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.DragHandle
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
@@ -97,6 +94,7 @@ import com.example.data.GraphicsQuality
 import com.example.data.PlaylistSummary
 import com.example.data.Track
 import com.example.data.UserPreferences
+import com.example.ui.components.PlinthIcons
 import com.example.ui.components.TactileCapsuleButton
 import com.example.ui.i18n.AppLanguage
 import com.example.ui.theme.DigitalMonoFontFamily
@@ -229,7 +227,7 @@ fun QueueBottomSheet(
                                                 },
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Rounded.DragHandle,
+                                                imageVector = PlinthIcons.DragHandle,
                                                 contentDescription = strings.moreOptions,
                                                 tint = if (isBeingDragged) palette.inkPrimary else palette.inkSecondary,
                                                 modifier = Modifier.size(20.dp),
@@ -571,7 +569,7 @@ fun EqualizerBottomSheet(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.BookmarkAdd,
+                                imageVector = PlinthIcons.BookmarkAdd,
                                 contentDescription = null,
                                 tint = palette.inkPrimary,
                                 modifier = Modifier.size(15.dp),
@@ -702,7 +700,7 @@ fun EqualizerBottomSheet(
                                         DropdownMenuItem(
                                             text = { Text(strings.delete, color = palette.favoriteRed) },
                                             leadingIcon = {
-                                                Icon(Icons.Rounded.DeleteOutline, null, tint = palette.favoriteRed)
+                                                Icon(PlinthIcons.DeleteOutline, null, tint = palette.favoriteRed)
                                             },
                                             onClick = {
                                                 menuOpen = false

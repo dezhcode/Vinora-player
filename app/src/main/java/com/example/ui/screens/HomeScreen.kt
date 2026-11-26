@@ -22,22 +22,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
-import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.rounded.ArrowDownward
-import androidx.compose.material.icons.rounded.ArrowUpward
-import androidx.compose.material.icons.rounded.AudioFile
-import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.FilterList
-import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.SwapVert
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -68,6 +56,7 @@ import com.example.data.HomeTrackSorter
 import com.example.data.Track
 import com.example.ui.components.CircularArtworkDisc
 import com.example.ui.components.MorphingPlayPauseIcon
+import com.example.ui.components.PlinthIcons
 import com.example.ui.components.TactileCapsuleButton
 import com.example.ui.components.TactileRoundButton
 import com.example.ui.components.plinthSoftShadow
@@ -197,7 +186,7 @@ fun HomeScreen(
                             .testTag("home_settings_button"),
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.Tune,
+                            imageVector = PlinthIcons.Tune,
                             contentDescription = strings.settings,
                             tint = palette.inkPrimary,
                         )
@@ -308,14 +297,14 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     StudioToolPill(
-                        icon = Icons.Rounded.AudioFile,
+                        icon = PlinthIcons.AudioFile,
                         label = strings.importAudio,
                         onClick = onImportAudio,
                         hapticsEnabled = hapticsEnabled,
                         modifier = Modifier.weight(1f).testTag("home_import_audio"),
                     )
                     StudioToolPill(
-                        icon = Icons.Rounded.FolderOpen,
+                        icon = PlinthIcons.FolderOpen,
                         label = if (isScanningDevice) strings.scanning else strings.scanDevice,
                         onClick = onScanDevice,
                         hapticsEnabled = hapticsEnabled,
@@ -328,14 +317,14 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     StudioToolPill(
-                        icon = Icons.Rounded.GraphicEq,
+                        icon = PlinthIcons.GraphicEq,
                         label = strings.equalizer,
                         onClick = onOpenEqualizer,
                         hapticsEnabled = hapticsEnabled,
                         modifier = Modifier.weight(1f).testTag("home_equalizer"),
                     )
                     StudioToolPill(
-                        icon = Icons.Rounded.Bedtime,
+                        icon = PlinthIcons.Bedtime,
                         label = if (sleepTimerRemainingMs > 0L) {
                             formatDuration(sleepTimerRemainingMs)
                         } else {
@@ -474,9 +463,9 @@ fun HomeScreen(
                         ) {
                             Icon(
                                 imageVector = if (activeSortAscending) {
-                                    Icons.Rounded.ArrowUpward
+                                    PlinthIcons.ArrowUpward
                                 } else {
-                                    Icons.Rounded.ArrowDownward
+                                    PlinthIcons.ArrowDownward
                                 },
                                 contentDescription = null,
                                 tint = palette.inkPrimary,
@@ -509,7 +498,7 @@ fun HomeScreen(
                 ) {
                     item {
                         Icon(
-                            imageVector = Icons.Rounded.SwapVert,
+                            imageVector = PlinthIcons.SwapVert,
                             contentDescription = strings.sortBy,
                             tint = palette.inkSecondary,
                             modifier = Modifier.size(18.dp),
@@ -565,7 +554,7 @@ fun HomeScreen(
                 ) {
                     item {
                         Icon(
-                            imageVector = Icons.Rounded.FilterList,
+                            imageVector = PlinthIcons.FilterList,
                             contentDescription = strings.filterLabel,
                             tint = palette.inkSecondary,
                             modifier = Modifier.size(18.dp),
@@ -618,7 +607,7 @@ fun HomeScreen(
                         .testTag("home_empty_filtered"),
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.FilterList,
+                        imageVector = PlinthIcons.FilterList,
                         contentDescription = null,
                         tint = palette.inkSecondary,
                         modifier = Modifier.size(28.dp),
@@ -710,7 +699,7 @@ fun HomeScreen(
                                     DropdownMenuItem(
                                         text = { Text(strings.playNext, color = palette.inkPrimary) },
                                         leadingIcon = {
-                                            Icon(Icons.AutoMirrored.Rounded.PlaylistPlay, null, tint = palette.inkPrimary)
+                                            Icon(PlinthIcons.PlaylistPlay, null, tint = palette.inkPrimary)
                                         },
                                         onClick = {
                                             menuOpen = false
@@ -721,7 +710,7 @@ fun HomeScreen(
                                     DropdownMenuItem(
                                         text = { Text(strings.addToQueue, color = palette.inkPrimary) },
                                         leadingIcon = {
-                                            Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = palette.inkPrimary)
+                                            Icon(PlinthIcons.QueueMusic, null, tint = palette.inkPrimary)
                                         },
                                         onClick = {
                                             menuOpen = false
@@ -732,7 +721,7 @@ fun HomeScreen(
                                     DropdownMenuItem(
                                         text = { Text(strings.addToPlaylist, color = palette.inkPrimary) },
                                         leadingIcon = {
-                                            Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, tint = palette.inkPrimary)
+                                            Icon(PlinthIcons.PlaylistAdd, null, tint = palette.inkPrimary)
                                         },
                                         onClick = {
                                             menuOpen = false

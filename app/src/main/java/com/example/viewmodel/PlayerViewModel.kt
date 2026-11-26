@@ -103,6 +103,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     val spectrum: StateFlow<SpectrumSnapshot> = SpectrumBus.spectrum
     val equalizerState: StateFlow<EqualizerState> = AudioEqualizerController.state
+    val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
 
     private var sleepTimerJob: Job? = null
     private var lastSavedTickMs = 0L
@@ -113,19 +114,49 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _currentTrack,
         _currentIndex,
         _isPlaying,
-        _positionMs,
-    ) { queue, current, index, playing, pos ->
-        PlaybackCore(queue, current, index, playing, pos)
+    ) { queue, current, index, playing ->
+        PlaybackCore(queue, current, index, playing)
+    }
+
+    private val libraryDerivedFlow = combine(
+        repository.allTracks,
+        repository.recentTrackIds,
+    ) { tracks, recentIds ->
+        val byId = tracks.associateBy { it.id }
+        val recent = recentIds.mapNotNull { byId[it] }
+        val albums = tracks.groupBy { it.album }.map { (albumName, items) ->
+            AlbumGroup(
+                name = albumName,
+                artist = items.firstOrNull()?.artist.orEmpty(),
+                artworkUri = items.firstOrNull { it.artworkUri != null }?.artworkUri,
+                tracks = items,
+            )
+        }.sortedBy { it.name }
+        val artists = tracks.groupBy { it.artist }.map { (artistName, items) ->
+            ArtistGroup(
+                name = artistName,
+                artworkUri = items.firstOrNull { it.artworkUri != null }?.artworkUri,
+                tracks = items,
+            )
+        }.sortedBy { it.name }
+        val folders = tracks.groupBy { it.folderPath }.map { (path, items) ->
+            FolderGroup(
+                name = items.firstOrNull()?.folderName ?: path,
+                path = path,
+                artworkUri = items.firstOrNull { it.artworkUri != null }?.artworkUri,
+                tracks = items,
+            )
+        }.sortedBy { it.name.lowercase() }
+        LibraryDerived(tracks, recent, albums, artists, folders)
     }
 
     private val libraryFlow = combine(
-        repository.allTracks,
+        libraryDerivedFlow,
         repository.favoriteIds,
         repository.playlists,
-        repository.recentTrackIds,
         repository.preferences.preferencesFlow,
-    ) { tracks, favs, playlists, recentIds, prefs ->
-        LibraryBundle(tracks, favs, playlists, recentIds, prefs)
+    ) { derived, favs, playlists, prefs ->
+        LibraryBundle(derived, favs, playlists, prefs)
     }
 
     private val auxFlow = combine(
@@ -148,47 +179,21 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         auxFlow,
         transitionFlow,
     ) { core, lib, aux, transition ->
-        val byId = lib.tracks.associateBy { it.id }
-        val recent = lib.recentIds.mapNotNull { byId[it] }
-        val albums = lib.tracks.groupBy { it.album }.map { (albumName, items) ->
-            AlbumGroup(
-                name = albumName,
-                artist = items.firstOrNull()?.artist.orEmpty(),
-                artworkUri = items.firstOrNull { it.artworkUri != null }?.artworkUri,
-                tracks = items,
-            )
-        }.sortedBy { it.name }
-        val artists = lib.tracks.groupBy { it.artist }.map { (artistName, items) ->
-            ArtistGroup(
-                name = artistName,
-                artworkUri = items.firstOrNull { it.artworkUri != null }?.artworkUri,
-                tracks = items,
-            )
-        }.sortedBy { it.name }
-        val folders = lib.tracks.groupBy { it.folderPath }.map { (path, items) ->
-            FolderGroup(
-                name = items.firstOrNull()?.folderName ?: path,
-                path = path,
-                artworkUri = items.firstOrNull { it.artworkUri != null }?.artworkUri,
-                tracks = items,
-            )
-        }.sortedBy { it.name.lowercase() }
-
         PlayerUiState(
-            tracks = lib.tracks,
+            tracks = lib.derived.tracks,
             queue = core.queue,
             currentTrack = core.current,
             currentQueueIndex = core.index,
             isPlaying = core.playing,
-            positionMs = core.positionMs,
+            positionMs = 0L,
             durationMs = if (aux.durationMs > 0L) aux.durationMs else core.current?.durationMs ?: 0L,
             volume = aux.volume,
             favoriteIds = lib.favs,
             playlists = lib.playlists,
-            recentTracks = recent,
-            albums = albums,
-            artists = artists,
-            folders = folders,
+            recentTracks = lib.derived.recentTracks,
+            albums = lib.derived.albums,
+            artists = lib.derived.artists,
+            folders = lib.derived.folders,
             preferences = lib.prefs,
             sleepTimerRemainingMs = aux.sleepTimerMs,
             isScanningDevice = aux.scanning,
@@ -845,14 +850,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         val current: Track?,
         val index: Int,
         val playing: Boolean,
-        val positionMs: Long,
+    )
+
+    private data class LibraryDerived(
+        val tracks: List<Track>,
+        val recentTracks: List<Track>,
+        val albums: List<AlbumGroup>,
+        val artists: List<ArtistGroup>,
+        val folders: List<FolderGroup>,
     )
 
     private data class LibraryBundle(
-        val tracks: List<Track>,
+        val derived: LibraryDerived,
         val favs: Set<String>,
         val playlists: List<PlaylistSummary>,
-        val recentIds: List<String>,
         val prefs: UserPreferences,
     )
 

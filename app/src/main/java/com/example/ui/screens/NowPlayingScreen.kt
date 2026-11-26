@@ -25,14 +25,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.rounded.QueueMusic
-import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.Repeat
-import androidx.compose.material.icons.rounded.RepeatOne
-import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -70,12 +64,14 @@ import com.example.data.Track
 import com.example.ui.components.LiveAudioVisualizerSection
 import com.example.ui.components.MinimalSkipIcon
 import com.example.ui.components.MorphingPlayPauseIcon
+import com.example.ui.components.PlinthIcons
 import com.example.ui.components.TactileCapsuleButton
 import com.example.ui.components.TactileRoundButton
 import com.example.ui.components.TurntableDeck
 import com.example.ui.theme.DigitalMonoFontFamily
 import com.example.ui.theme.LocalAppStrings
 import com.example.ui.theme.LocalPlinthColors
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.viewmodel.formatDuration
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
@@ -113,6 +109,7 @@ fun NowPlayingScreen(
     onOpenAddToPlaylist: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    positionMsFlow: StateFlow<Long>? = null,
 ) {
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
@@ -122,7 +119,7 @@ fun NowPlayingScreen(
     BackHandler(onBack = onBack)
 
     val safeDuration = durationMs.coerceAtLeast(1L)
-    val progressFraction = (positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
+    val fallbackProgress = (positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
 
     Box(
         modifier = modifier
@@ -229,7 +226,7 @@ fun NowPlayingScreen(
                             .testTag("now_playing_menu_button"),
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.MoreHoriz,
+                            imageVector = PlinthIcons.MoreHoriz,
                             contentDescription = stringResource(R.string.cd_menu),
                             tint = palette.inkPrimary,
                             modifier = Modifier.size(24.dp),
@@ -277,7 +274,7 @@ fun NowPlayingScreen(
                 }
             }
 
-            // Top-Down Industrial Turntable Deck
+            // Top-Down Industrial Turntable Deck (quantized progress updates avoid unnecessary deck recompositions)
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
@@ -285,10 +282,12 @@ fun NowPlayingScreen(
                     .height(deckHeight)
                     .padding(horizontal = 20.dp),
             ) {
-                TurntableDeck(
+                NowPlayingTurntableSlot(
                     artworkUri = track.artworkUri,
                     isPlaying = isPlaying,
-                    progressFraction = progressFraction,
+                    fallbackProgress = fallbackProgress,
+                    positionMsFlow = positionMsFlow,
+                    safeDuration = safeDuration,
                     volume = volume,
                     trackChangeNonce = trackChangeNonce,
                     trackChangeDirection = trackChangeDirection,
@@ -298,7 +297,6 @@ fun NowPlayingScreen(
                     onTogglePlayPause = onTogglePlayPause,
                     onScrubDeltaMs = onScrubDeltaMs,
                     onVolumeChange = onVolumeChange,
-                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
@@ -349,6 +347,7 @@ fun NowPlayingScreen(
                 durationMs = durationMs,
                 onSeekTo = onSeekTo,
                 onOpenEqualizer = onOpenEqualizer,
+                positionMsFlow = positionMsFlow,
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -370,7 +369,7 @@ fun NowPlayingScreen(
                         .padding(horizontal = 14.dp, vertical = 2.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
+                        imageVector = PlinthIcons.VolumeUp,
                         contentDescription = strings.volume,
                         tint = palette.inkSecondary,
                         modifier = Modifier.size(18.dp),
@@ -499,7 +498,7 @@ fun NowPlayingScreen(
                         .testTag("btn_shuffle"),
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.Shuffle,
+                        imageVector = PlinthIcons.Shuffle,
                         contentDescription = stringResource(R.string.cd_shuffle),
                         tint = if (shuffleEnabled) palette.inkPrimary else palette.inkMuted,
                         modifier = Modifier.size(21.dp),
@@ -533,7 +532,7 @@ fun NowPlayingScreen(
                         .testTag("btn_volume"),
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
+                        imageVector = PlinthIcons.VolumeUp,
                         contentDescription = stringResource(R.string.cd_volume),
                         tint = if (showVolumeStrip) palette.inkPrimary else palette.inkMuted,
                         modifier = Modifier.size(21.dp),
@@ -550,7 +549,7 @@ fun NowPlayingScreen(
                         .testTag("btn_queue"),
                 ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                        imageVector = PlinthIcons.QueueMusic,
                         contentDescription = stringResource(R.string.cd_queue),
                         tint = palette.inkMuted,
                         modifier = Modifier.size(22.dp),
@@ -567,7 +566,7 @@ fun NowPlayingScreen(
                         .testTag("btn_repeat"),
                 ) {
                     Icon(
-                        imageVector = if (repeatMode == RepeatMode.ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                        imageVector = if (repeatMode == RepeatMode.ONE) PlinthIcons.RepeatOne else PlinthIcons.Repeat,
                         contentDescription = stringResource(R.string.cd_repeat),
                         tint = if (repeatMode != RepeatMode.OFF) palette.inkPrimary else palette.inkMuted,
                         modifier = Modifier.size(21.dp),
@@ -579,4 +578,45 @@ fun NowPlayingScreen(
             }
         }
     }
+}
+
+@Composable
+private fun NowPlayingTurntableSlot(
+    artworkUri: String?,
+    isPlaying: Boolean,
+    fallbackProgress: Float,
+    positionMsFlow: StateFlow<Long>?,
+    safeDuration: Long,
+    volume: Float,
+    trackChangeNonce: Int,
+    trackChangeDirection: Int,
+    graphicsQuality: GraphicsQuality,
+    batterySaverMode: Boolean,
+    reducedMotion: Boolean,
+    onTogglePlayPause: () -> Unit,
+    onScrubDeltaMs: (Long) -> Unit,
+    onVolumeChange: (Float) -> Unit,
+) {
+    val livePos = positionMsFlow?.collectAsStateWithLifecycle()?.value
+    val quantizedProgress = if (livePos != null) {
+        val raw = (livePos.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
+        (raw * 400f).roundToInt() / 400f
+    } else {
+        fallbackProgress
+    }
+    TurntableDeck(
+        artworkUri = artworkUri,
+        isPlaying = isPlaying,
+        progressFraction = quantizedProgress,
+        volume = volume,
+        trackChangeNonce = trackChangeNonce,
+        trackChangeDirection = trackChangeDirection,
+        graphicsQuality = graphicsQuality,
+        batterySaverMode = batterySaverMode,
+        reducedMotion = reducedMotion,
+        onTogglePlayPause = onTogglePlayPause,
+        onScrubDeltaMs = onScrubDeltaMs,
+        onVolumeChange = onVolumeChange,
+        modifier = Modifier.fillMaxSize(),
+    )
 }

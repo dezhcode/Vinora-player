@@ -6,9 +6,11 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -26,10 +28,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -147,18 +151,25 @@ fun PlinthApp(
         }
     }
 
-    // Fluid spring transition progress between Main Shell (0f) and Full Turntable Now Playing (1f)
-    val expandProgress by animateFloatAsState(
-        targetValue = if (isNowPlayingOpen) 1f else 0f,
-        animationSpec = spring(
-            dampingRatio = if (uiState.preferences.reducedMotion) 1f else 0.85f,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
-        label = "nowPlayingTransition",
-    )
-
-    val safeDuration = uiState.durationMs.coerceAtLeast(1L)
-    val progressFraction = (uiState.positionMs.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
+    // Fluid spring transition driven via Animatable read inside graphicsLayer only (zero recomposition per frame)
+    val expandAnim = remember { Animatable(0f) }
+    LaunchedEffect(isNowPlayingOpen, uiState.preferences.reducedMotion) {
+        val target = if (isNowPlayingOpen) 1f else 0f
+        if (uiState.preferences.reducedMotion) {
+            expandAnim.animateTo(target, animationSpec = tween(durationMillis = 120))
+        } else {
+            expandAnim.animateTo(
+                target,
+                animationSpec = spring(
+                    dampingRatio = 0.88f,
+                    stiffness = Spring.StiffnessMediumLow,
+                ),
+            )
+        }
+    }
+    val showMainShell by remember { derivedStateOf { expandAnim.value < 0.995f } }
+    val showNowPlaying by remember { derivedStateOf { expandAnim.value > 0.005f } }
+    val tabStateHolder = rememberSaveableStateHolder()
 
     Box(
         modifier = Modifier
@@ -168,15 +179,16 @@ fun PlinthApp(
             ),
     ) {
         // Primary Shell Layer (Home / Explore / Library + Floating Mini Player + Minimal Bottom Nav)
-        if (expandProgress < 0.99f) {
+        if (showMainShell) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        val s = 1f - expandProgress * 0.055f
+                        val p = expandAnim.value
+                        val s = 1f - p * 0.055f
                         scaleX = s
                         scaleY = s
-                        alpha = 1f - expandProgress
+                        alpha = 1f - p
                     },
             ) {
                 Column(
@@ -185,110 +197,120 @@ fun PlinthApp(
                         .statusBarsPadding(),
                 ) {
                     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                        when (selectedTab) {
-                            MainTab.EXPLORE -> {
-                                ExploreScreen(
-                                    tracks = uiState.tracks,
-                                    activeTrackId = uiState.currentTrack?.id,
-                                    isPlaying = uiState.isPlaying,
-                                    hapticsEnabled = uiState.preferences.hapticsEnabled,
-                                    reducedMotion = uiState.preferences.reducedMotion,
-                                    onSelectTrackAndOpenPlayer = { track ->
-                                        ensureNotificationPermission()
-                                        viewModel.playTrack(track, uiState.tracks)
-                                        isNowPlayingOpen = true
-                                    },
-                                    onPlayNext = { track ->
-                                        viewModel.playNext(track, strings.playingNext(track.title))
-                                    },
-                                    onAddToQueue = { track ->
-                                        viewModel.addToQueue(track, strings.addedToQueue(track.title))
-                                    },
-                                    onImportAudio = ::triggerImportAudio,
-                                    onScanDevice = ::triggerScanDevice,
-                                    onOpenEqualizer = { showEqualizerSheet = true },
-                                    onOpenSettings = { showSettingsSheet = true },
-                                )
-                            }
+                        Crossfade(
+                            targetState = selectedTab,
+                            animationSpec = tween(
+                                durationMillis = if (uiState.preferences.reducedMotion) 0 else 150,
+                            ),
+                            label = "mainTabCrossfade",
+                        ) { tab ->
+                            tabStateHolder.SaveableStateProvider(key = tab) {
+                                when (tab) {
+                                    MainTab.EXPLORE -> {
+                                        ExploreScreen(
+                                            tracks = uiState.tracks,
+                                            activeTrackId = uiState.currentTrack?.id,
+                                            isPlaying = uiState.isPlaying,
+                                            hapticsEnabled = uiState.preferences.hapticsEnabled,
+                                            reducedMotion = uiState.preferences.reducedMotion,
+                                            onSelectTrackAndOpenPlayer = { track ->
+                                                ensureNotificationPermission()
+                                                viewModel.playTrack(track, uiState.tracks)
+                                                isNowPlayingOpen = true
+                                            },
+                                            onPlayNext = { track ->
+                                                viewModel.playNext(track, strings.playingNext(track.title))
+                                            },
+                                            onAddToQueue = { track ->
+                                                viewModel.addToQueue(track, strings.addedToQueue(track.title))
+                                            },
+                                            onImportAudio = ::triggerImportAudio,
+                                            onScanDevice = ::triggerScanDevice,
+                                            onOpenEqualizer = { showEqualizerSheet = true },
+                                            onOpenSettings = { showSettingsSheet = true },
+                                        )
+                                    }
 
-                            MainTab.HOME -> {
-                                val favTracks = remember(uiState.tracks, uiState.favoriteIds) {
-                                    uiState.tracks.filter { uiState.favoriteIds.contains(it.id) }
+                                    MainTab.HOME -> {
+                                        val favTracks = remember(uiState.tracks, uiState.favoriteIds) {
+                                            uiState.tracks.filter { uiState.favoriteIds.contains(it.id) }
+                                        }
+                                        HomeScreen(
+                                            currentTrack = uiState.currentTrack,
+                                            isPlaying = uiState.isPlaying,
+                                            recentTracks = uiState.recentTracks,
+                                            favoriteTracks = favTracks,
+                                            allTracks = uiState.tracks,
+                                            sleepTimerRemainingMs = uiState.sleepTimerRemainingMs,
+                                            isScanningDevice = uiState.isScanningDevice,
+                                            hapticsEnabled = uiState.preferences.hapticsEnabled,
+                                            onPlayTrack = { track, queue ->
+                                                ensureNotificationPermission()
+                                                viewModel.playTrack(track, queue)
+                                                isNowPlayingOpen = true
+                                            },
+                                            onPlayNext = { track ->
+                                                viewModel.playNext(track, strings.playingNext(track.title))
+                                            },
+                                            onAddToQueue = { track ->
+                                                viewModel.addToQueue(track, strings.addedToQueue(track.title))
+                                            },
+                                            onOpenAddToPlaylist = { track -> trackForPlaylistDialog = track },
+                                            onTogglePlayPause = {
+                                                ensureNotificationPermission()
+                                                viewModel.togglePlayPause()
+                                            },
+                                            onOpenNowPlaying = { isNowPlayingOpen = true },
+                                            onOpenSearch = {
+                                                openLibraryWithSearch = true
+                                                selectedTab = MainTab.LIBRARY
+                                            },
+                                            onOpenEqualizer = { showEqualizerSheet = true },
+                                            onOpenSettings = { showSettingsSheet = true },
+                                            onImportAudio = ::triggerImportAudio,
+                                            onScanDevice = ::triggerScanDevice,
+                                            favoriteIds = uiState.favoriteIds,
+                                            sortField = uiState.preferences.homeSortField,
+                                            sortAscending = uiState.preferences.homeSortAscending,
+                                            filterType = uiState.preferences.homeFilterType,
+                                            onSortChange = viewModel::setHomeSort,
+                                            onFilterChange = viewModel::setHomeFilter,
+                                            onToggleFavorite = viewModel::toggleFavorite,
+                                        )
+                                    }
+
+                                    MainTab.LIBRARY -> {
+                                        LibraryScreen(
+                                            tracks = uiState.tracks,
+                                            albums = uiState.albums,
+                                            artists = uiState.artists,
+                                            folders = uiState.folders,
+                                            playlists = uiState.playlists,
+                                            favoriteIds = uiState.favoriteIds,
+                                            activeTrackId = uiState.currentTrack?.id,
+                                            initialSearchFocused = openLibraryWithSearch,
+                                            hapticsEnabled = uiState.preferences.hapticsEnabled,
+                                            onPlayTrack = { track, queue ->
+                                                ensureNotificationPermission()
+                                                viewModel.playTrack(track, queue)
+                                                isNowPlayingOpen = true
+                                            },
+                                            onPlayNext = { track ->
+                                                viewModel.playNext(track, strings.playingNext(track.title))
+                                            },
+                                            onAddToQueue = { track ->
+                                                viewModel.addToQueue(track, strings.addedToQueue(track.title))
+                                            },
+                                            onToggleFavorite = viewModel::toggleFavorite,
+                                            onOpenAddToPlaylist = { track -> trackForPlaylistDialog = track },
+                                            onOpenCreatePlaylist = { showCreatePlaylistDialog = true },
+                                            onDeletePlaylist = viewModel::deletePlaylist,
+                                            onRemoveFromPlaylist = viewModel::removeTrackFromPlaylist,
+                                            onImportAudio = ::triggerImportAudio,
+                                            onScanDevice = ::triggerScanDevice,
+                                        )
+                                    }
                                 }
-                                HomeScreen(
-                                    currentTrack = uiState.currentTrack,
-                                    isPlaying = uiState.isPlaying,
-                                    recentTracks = uiState.recentTracks,
-                                    favoriteTracks = favTracks,
-                                    allTracks = uiState.tracks,
-                                    sleepTimerRemainingMs = uiState.sleepTimerRemainingMs,
-                                    isScanningDevice = uiState.isScanningDevice,
-                                    hapticsEnabled = uiState.preferences.hapticsEnabled,
-                                    onPlayTrack = { track, queue ->
-                                        ensureNotificationPermission()
-                                        viewModel.playTrack(track, queue)
-                                        isNowPlayingOpen = true
-                                    },
-                                    onPlayNext = { track ->
-                                        viewModel.playNext(track, strings.playingNext(track.title))
-                                    },
-                                    onAddToQueue = { track ->
-                                        viewModel.addToQueue(track, strings.addedToQueue(track.title))
-                                    },
-                                    onOpenAddToPlaylist = { track -> trackForPlaylistDialog = track },
-                                    onTogglePlayPause = {
-                                        ensureNotificationPermission()
-                                        viewModel.togglePlayPause()
-                                    },
-                                    onOpenNowPlaying = { isNowPlayingOpen = true },
-                                    onOpenSearch = {
-                                        openLibraryWithSearch = true
-                                        selectedTab = MainTab.LIBRARY
-                                    },
-                                    onOpenEqualizer = { showEqualizerSheet = true },
-                                    onOpenSettings = { showSettingsSheet = true },
-                                    onImportAudio = ::triggerImportAudio,
-                                    onScanDevice = ::triggerScanDevice,
-                                    favoriteIds = uiState.favoriteIds,
-                                    sortField = uiState.preferences.homeSortField,
-                                    sortAscending = uiState.preferences.homeSortAscending,
-                                    filterType = uiState.preferences.homeFilterType,
-                                    onSortChange = viewModel::setHomeSort,
-                                    onFilterChange = viewModel::setHomeFilter,
-                                    onToggleFavorite = viewModel::toggleFavorite,
-                                )
-                            }
-
-                            MainTab.LIBRARY -> {
-                                LibraryScreen(
-                                    tracks = uiState.tracks,
-                                    albums = uiState.albums,
-                                    artists = uiState.artists,
-                                    folders = uiState.folders,
-                                    playlists = uiState.playlists,
-                                    favoriteIds = uiState.favoriteIds,
-                                    activeTrackId = uiState.currentTrack?.id,
-                                    initialSearchFocused = openLibraryWithSearch,
-                                    hapticsEnabled = uiState.preferences.hapticsEnabled,
-                                    onPlayTrack = { track, queue ->
-                                        ensureNotificationPermission()
-                                        viewModel.playTrack(track, queue)
-                                        isNowPlayingOpen = true
-                                    },
-                                    onPlayNext = { track ->
-                                        viewModel.playNext(track, strings.playingNext(track.title))
-                                    },
-                                    onAddToQueue = { track ->
-                                        viewModel.addToQueue(track, strings.addedToQueue(track.title))
-                                    },
-                                    onToggleFavorite = viewModel::toggleFavorite,
-                                    onOpenAddToPlaylist = { track -> trackForPlaylistDialog = track },
-                                    onOpenCreatePlaylist = { showCreatePlaylistDialog = true },
-                                    onDeletePlaylist = viewModel::deletePlaylist,
-                                    onRemoveFromPlaylist = viewModel::removeTrackFromPlaylist,
-                                    onImportAudio = ::triggerImportAudio,
-                                    onScanDevice = ::triggerScanDevice,
-                                )
                             }
                         }
 
@@ -305,7 +327,7 @@ fun PlinthApp(
                                 FloatingMiniPlayer(
                                     track = currentTrack,
                                     isPlaying = uiState.isPlaying,
-                                    progressFraction = progressFraction,
+                                    progressFraction = 0f,
                                     hapticsEnabled = uiState.preferences.hapticsEnabled,
                                     batterySaverMode = uiState.preferences.batterySaverMode,
                                     reducedMotion = uiState.preferences.reducedMotion,
@@ -314,6 +336,8 @@ fun PlinthApp(
                                         viewModel.togglePlayPause()
                                     },
                                     onExpand = { isNowPlayingOpen = true },
+                                    positionMsFlow = viewModel.positionMs,
+                                    durationMs = uiState.durationMs,
                                 )
                             }
                         }
@@ -331,24 +355,25 @@ fun PlinthApp(
             }
         }
 
-        // Fullscreen Turntable Now Playing Overlay with physics-driven spring bloom transition
+        // Fullscreen Turntable Now Playing Overlay with GPU-only spring bloom transition
         val activeTrack = uiState.currentTrack
-        if (expandProgress > 0.01f && activeTrack != null) {
+        if (showNowPlaying && activeTrack != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        val s = 0.88f + expandProgress * 0.12f
+                        val p = expandAnim.value
+                        val s = 0.88f + p * 0.12f
                         scaleX = s
                         scaleY = s
-                        translationY = (1f - expandProgress) * 90f
-                        alpha = expandProgress
+                        translationY = (1f - p) * 90f
+                        alpha = p
                     },
             ) {
                 NowPlayingScreen(
                     track = activeTrack,
                     isPlaying = uiState.isPlaying,
-                    positionMs = uiState.positionMs,
+                    positionMs = 0L,
                     durationMs = uiState.durationMs,
                     volume = uiState.volume,
                     shuffleEnabled = uiState.preferences.shuffleEnabled,
@@ -379,6 +404,7 @@ fun PlinthApp(
                     onOpenEqualizer = { showEqualizerSheet = true },
                     onOpenAddToPlaylist = { trackForPlaylistDialog = activeTrack },
                     onOpenSettings = { showSettingsSheet = true },
+                    positionMsFlow = viewModel.positionMs,
                 )
             }
         }

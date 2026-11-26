@@ -80,9 +80,6 @@ object AudioEqualizerController {
     }
 
     @Synchronized
-    fun activeSessionIds(): Set<Int> = sessionEqualizers.keys.toSet()
-
-    @Synchronized
     fun applySettings(
         enabled: Boolean,
         presetIndex: Int,

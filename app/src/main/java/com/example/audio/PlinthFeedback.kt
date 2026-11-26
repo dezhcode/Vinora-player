@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.Executors
 import kotlin.math.PI
 import kotlin.math.exp
 import kotlin.math.sin
@@ -35,6 +36,9 @@ enum class FeedbackEvent {
 object PlinthFeedback {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val feedbackExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "PlinthFeedbackWorker").apply { isDaemon = true }
+    }
 
     @Volatile
     var hapticsEnabled: Boolean = true
@@ -97,24 +101,28 @@ object PlinthFeedback {
     }
 
     fun trigger(event: FeedbackEvent) {
-        if (hapticsEnabled) {
-            vibrateForEvent(event)
-        }
-        if (uiSoundsEnabled) {
-            playSoundForEvent(event)
+        val doVib = hapticsEnabled && hasVibrator && vibrator != null
+        val doSound = uiSoundsEnabled && soundPool != null && soundIds.containsKey(event)
+        if (!doVib && !doSound) return
+        feedbackExecutor.execute {
+            if (doVib) vibrateForEvent(event)
+            if (doSound) playSoundForEvent(event)
         }
     }
 
     fun triggerSliderDetent(isMajorNotch: Boolean) {
         val now = System.currentTimeMillis()
-        if (hapticsEnabled && now - lastSliderHapticMs >= 26L) {
-            lastSliderHapticMs = now
-            vibrateSliderDetent(isMajorNotch)
-        }
-        if (uiSoundsEnabled && now - lastSliderSoundMs >= 36L) {
-            lastSliderSoundMs = now
-            val pool = soundPool
-            if (pool != null && sliderTickLoaded && sliderTickSoundId != 0) {
+        val doVib = hapticsEnabled && hasVibrator && vibrator != null && (now - lastSliderHapticMs >= 28L)
+        if (doVib) lastSliderHapticMs = now
+
+        val pool = soundPool
+        val doSound = uiSoundsEnabled && pool != null && sliderTickLoaded && sliderTickSoundId != 0 && (now - lastSliderSoundMs >= 38L)
+        if (doSound) lastSliderSoundMs = now
+
+        if (!doVib && !doSound) return
+        feedbackExecutor.execute {
+            if (doVib) vibrateSliderDetent(isMajorNotch)
+            if (doSound && pool != null) {
                 val vol = if (isMajorNotch) 0.34f else 0.19f
                 val rate = if (isMajorNotch) 1.0f else 1.18f
                 runCatching { pool.play(sliderTickSoundId, vol, vol, 1, 0, rate) }
