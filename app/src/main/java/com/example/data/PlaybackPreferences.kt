@@ -45,7 +45,10 @@ data class UserPreferences(
     val eqBands: List<Int> = listOf(0, 0, 0, 0, 0),
     val eqCustomPresetId: String? = null,
     val customEqPresets: List<CustomEqPreset> = emptyList(),
-    val crossfadeEnabled: Boolean = false,
+    val crossfadeEnabled: Boolean = true,
+    val homeSortField: HomeSortField = HomeSortField.DATE,
+    val homeSortAscending: Boolean = false,
+    val homeFilterType: HomeFilterType = HomeFilterType.ALL,
 )
 
 class PlaybackPreferences(private val context: Context) {
@@ -67,6 +70,9 @@ class PlaybackPreferences(private val context: Context) {
         val EQ_CUSTOM_PRESET_ID = stringPreferencesKey("eq_custom_preset_id")
         val CUSTOM_EQ_PRESETS = stringPreferencesKey("custom_eq_presets")
         val CROSSFADE_ENABLED = booleanPreferencesKey("crossfade_enabled")
+        val HOME_SORT_FIELD = stringPreferencesKey("home_sort_field")
+        val HOME_SORT_ASCENDING = booleanPreferencesKey("home_sort_ascending")
+        val HOME_FILTER_TYPE = stringPreferencesKey("home_filter_type")
     }
 
     val preferencesFlow: Flow<UserPreferences> = context.dataStore.data.map { prefs ->
@@ -94,6 +100,14 @@ class PlaybackPreferences(private val context: Context) {
 
         val customPresets = decodeCustomPresets(prefs[Keys.CUSTOM_EQ_PRESETS])
 
+        val homeSortField = runCatching {
+            HomeSortField.valueOf(prefs[Keys.HOME_SORT_FIELD] ?: HomeSortField.DATE.name)
+        }.getOrDefault(HomeSortField.DATE)
+
+        val homeFilterType = runCatching {
+            HomeFilterType.valueOf(prefs[Keys.HOME_FILTER_TYPE] ?: HomeFilterType.ALL.name)
+        }.getOrDefault(HomeFilterType.ALL)
+
         UserPreferences(
             themeMode = theme,
             language = lang,
@@ -111,7 +125,10 @@ class PlaybackPreferences(private val context: Context) {
             eqBands = bands,
             eqCustomPresetId = prefs[Keys.EQ_CUSTOM_PRESET_ID]?.takeIf { it.isNotBlank() },
             customEqPresets = customPresets,
-            crossfadeEnabled = prefs[Keys.CROSSFADE_ENABLED] ?: false,
+            crossfadeEnabled = prefs[Keys.CROSSFADE_ENABLED] ?: true,
+            homeSortField = homeSortField,
+            homeSortAscending = prefs[Keys.HOME_SORT_ASCENDING] ?: homeSortField.defaultAscending(),
+            homeFilterType = homeFilterType,
         )
     }
 
@@ -153,6 +170,17 @@ class PlaybackPreferences(private val context: Context) {
 
     suspend fun setCrossfadeEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.CROSSFADE_ENABLED] = enabled }
+    }
+
+    suspend fun setHomeSort(field: HomeSortField, ascending: Boolean) {
+        context.dataStore.edit {
+            it[Keys.HOME_SORT_FIELD] = field.name
+            it[Keys.HOME_SORT_ASCENDING] = ascending
+        }
+    }
+
+    suspend fun setHomeFilter(filter: HomeFilterType) {
+        context.dataStore.edit { it[Keys.HOME_FILTER_TYPE] = filter.name }
     }
 
     suspend fun saveLastPlayback(trackId: String, positionMs: Long) {

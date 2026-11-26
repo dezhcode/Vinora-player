@@ -319,6 +319,8 @@ class CrossfadeAndTransportTest {
         val sessionPlayer = com.example.audio.CrossfadeSessionPlayer(engine)
 
         try {
+            assertTrue("UserPreferences should enable crossfade by default", com.example.data.UserPreferences().crossfadeEnabled)
+            assertTrue("CrossfadeAudioEngine should enable crossfade by default", engine.crossfadeEnabled)
             engine.setCrossfadeEnabled(true)
             assertTrue(engine.crossfadeEnabled)
 

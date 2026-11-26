@@ -26,6 +26,8 @@ import com.example.data.ArtistGroup
 import com.example.data.CustomEqPreset
 import com.example.data.FolderGroup
 import com.example.data.GraphicsQuality
+import com.example.data.HomeFilterType
+import com.example.data.HomeSortField
 import com.example.data.MusicDatabase
 import com.example.data.MusicRepository
 import com.example.data.PlaybackPreferences
@@ -797,6 +799,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun setCrossfadeEnabled(enabled: Boolean) {
         mediaController?.let { sendCrossfadeCommand(it, enabled) }
         viewModelScope.launch { repository.setCrossfadeEnabled(enabled) }
+    }
+
+    fun setHomeSort(field: HomeSortField, ascending: Boolean) {
+        viewModelScope.launch { repository.setHomeSort(field, ascending) }
+    }
+
+    fun setHomeFilter(filter: HomeFilterType) {
+        viewModelScope.launch { repository.setHomeFilter(filter) }
     }
 
     fun showStatus(message: String) {

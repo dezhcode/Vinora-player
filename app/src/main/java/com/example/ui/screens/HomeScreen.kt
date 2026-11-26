@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,12 +25,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.PlaylistAdd
 import androidx.compose.material.icons.automirrored.rounded.PlaylistPlay
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.rounded.ArrowDownward
+import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AudioFile
 import androidx.compose.material.icons.rounded.Bedtime
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -49,11 +56,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.FeedbackEvent
 import com.example.audio.PlinthFeedback
+import com.example.data.HomeFilterType
+import com.example.data.HomeSortField
+import com.example.data.HomeTrackSorter
 import com.example.data.Track
 import com.example.ui.components.CircularArtworkDisc
 import com.example.ui.components.MorphingPlayPauseIcon
@@ -87,9 +98,43 @@ fun HomeScreen(
     onImportAudio: () -> Unit,
     onScanDevice: () -> Unit,
     modifier: Modifier = Modifier,
+    favoriteIds: Set<String> = emptySet(),
+    sortField: HomeSortField = HomeSortField.DATE,
+    sortAscending: Boolean = false,
+    filterType: HomeFilterType = HomeFilterType.ALL,
+    onSortChange: (HomeSortField, Boolean) -> Unit = { _, _ -> },
+    onFilterChange: (HomeFilterType) -> Unit = {},
+    onToggleFavorite: (String) -> Unit = {},
 ) {
     val palette = LocalPlinthColors.current
     val strings = LocalAppStrings.current
+
+    var activeSortField by remember(sortField) { mutableStateOf(sortField) }
+    var activeSortAscending by remember(sortAscending) { mutableStateOf(sortAscending) }
+    var activeFilter by remember(filterType) { mutableStateOf(filterType) }
+
+    val resolvedFavoriteIds = remember(favoriteIds, favoriteTracks) {
+        if (favoriteIds.isNotEmpty()) favoriteIds else favoriteTracks.map { it.id }.toSet()
+    }
+    val recentTrackIds = remember(recentTracks) { recentTracks.map { it.id }.toSet() }
+
+    val filteredSortedTracks = remember(
+        allTracks,
+        activeSortField,
+        activeSortAscending,
+        activeFilter,
+        resolvedFavoriteIds,
+        recentTrackIds,
+    ) {
+        HomeTrackSorter.filterAndSort(
+            tracks = allTracks,
+            sortField = activeSortField,
+            sortAscending = activeSortAscending,
+            filterType = activeFilter,
+            favoriteIds = resolvedFavoriteIds,
+            recentTrackIds = recentTrackIds,
+        )
+    }
 
     LazyColumn(
         contentPadding = PaddingValues(top = 16.dp, bottom = 128.dp),
@@ -373,83 +418,335 @@ fun HomeScreen(
             }
         }
 
-        // Favorites Section
-        if (favoriteTracks.isNotEmpty()) {
-            item {
-                Text(
-                    text = strings.favorites,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = palette.inkSecondary,
-                    modifier = Modifier.padding(horizontal = 26.dp),
+        // Home Music Browser Header + Sort & Filter Controls
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            text = strings.allTracks,
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = palette.inkPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = strings.tracksCount(filteredSortedTracks.size),
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontFamily = DigitalMonoFontFamily,
+                            ),
+                            color = palette.inkSecondary,
+                            maxLines = 1,
+                            modifier = Modifier.testTag("home_tracks_count"),
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    val orderLabel = if (activeSortAscending) strings.sortAscending else strings.sortDescending
+                    TactileCapsuleButton(
+                        onClick = {
+                            val nextAsc = !activeSortAscending
+                            activeSortAscending = nextAsc
+                            onSortChange(activeSortField, nextAsc)
+                        },
+                        contentDescription = orderLabel,
+                        cornerRadius = 18.dp,
+                        hapticsEnabled = hapticsEnabled,
+                        active = true,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("home_sort_order_toggle"),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Icon(
+                                imageVector = if (activeSortAscending) {
+                                    Icons.Rounded.ArrowUpward
+                                } else {
+                                    Icons.Rounded.ArrowDownward
+                                },
+                                contentDescription = null,
+                                tint = palette.inkPrimary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = orderLabel,
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                color = palette.inkPrimary,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+
+                // Sort Field Pills (Date, Track Name, Artist, Album, Duration)
+                val sortOptions = listOf(
+                    Triple(HomeSortField.DATE, strings.sortDate, "home_sort_date"),
+                    Triple(HomeSortField.TITLE, strings.sortTitle, "home_sort_title"),
+                    Triple(HomeSortField.ARTIST, strings.sortArtist, "home_sort_artist"),
+                    Triple(HomeSortField.ALBUM, strings.sortAlbum, "home_sort_album"),
+                    Triple(HomeSortField.DURATION, strings.sortDuration, "home_sort_duration"),
                 )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.testTag("home_sort_row"),
+                ) {
+                    item {
+                        Icon(
+                            imageVector = Icons.Rounded.SwapVert,
+                            contentDescription = strings.sortBy,
+                            tint = palette.inkSecondary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    items(sortOptions, key = { it.first.name }) { (field, label, tag) ->
+                        val isSelected = activeSortField == field
+                        TactileCapsuleButton(
+                            onClick = {
+                                val nextAsc = if (activeSortField == field) {
+                                    activeSortAscending
+                                } else {
+                                    field.defaultAscending()
+                                }
+                                activeSortField = field
+                                activeSortAscending = nextAsc
+                                onSortChange(field, nextAsc)
+                            },
+                            contentDescription = "${strings.sortBy}: $label",
+                            cornerRadius = 18.dp,
+                            hapticsEnabled = hapticsEnabled,
+                            active = isSelected,
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag(tag),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                ),
+                                color = if (isSelected) palette.inkPrimary else palette.inkSecondary,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            )
+                        }
+                    }
+                }
+
+                // Quick Filter Pills (All, Favorites, Device Audio, Recent, 3+ Min)
+                val filterOptions = listOf(
+                    Triple(HomeFilterType.ALL, strings.filterAll, "home_filter_all"),
+                    Triple(HomeFilterType.FAVORITES, strings.filterFavorites, "home_filter_favorites"),
+                    Triple(HomeFilterType.DEVICE, strings.filterDevice, "home_filter_device"),
+                    Triple(HomeFilterType.RECENT, strings.filterRecent, "home_filter_recent"),
+                    Triple(HomeFilterType.LONG_TRACKS, strings.filterLongTracks, "home_filter_long"),
+                )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.testTag("home_filter_row"),
+                ) {
+                    item {
+                        Icon(
+                            imageVector = Icons.Rounded.FilterList,
+                            contentDescription = strings.filterLabel,
+                            tint = palette.inkSecondary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    items(filterOptions, key = { it.first.name }) { (filter, label, tag) ->
+                        val isSelected = activeFilter == filter
+                        TactileCapsuleButton(
+                            onClick = {
+                                activeFilter = filter
+                                onFilterChange(filter)
+                            },
+                            contentDescription = "${strings.filterLabel}: $label",
+                            cornerRadius = 18.dp,
+                            hapticsEnabled = hapticsEnabled,
+                            active = isSelected,
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag(tag),
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                ),
+                                color = if (isSelected) palette.inkPrimary else palette.inkSecondary,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            )
+                        }
+                    }
+                }
             }
-            items(favoriteTracks.take(5), key = { "fav_${it.id}" }) { track ->
+        }
+
+        // Filtered & Sorted Tracks List
+        if (filteredSortedTracks.isEmpty()) {
+            item {
+                val shape = RoundedCornerShape(24.dp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .clip(shape)
+                        .background(palette.capsuleBg.copy(alpha = 0.72f))
+                        .border(1.dp, palette.hairline, shape)
+                        .padding(horizontal = 20.dp, vertical = 24.dp)
+                        .testTag("home_empty_filtered"),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.FilterList,
+                        contentDescription = null,
+                        tint = palette.inkSecondary,
+                        modifier = Modifier.size(28.dp),
+                    )
+                    Text(
+                        text = strings.emptyFilteredTracks,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = palette.inkSecondary,
+                        textAlign = TextAlign.Center,
+                    )
+                    if (activeFilter != HomeFilterType.ALL) {
+                        TactileCapsuleButton(
+                            onClick = {
+                                activeFilter = HomeFilterType.ALL
+                                onFilterChange(HomeFilterType.ALL)
+                            },
+                            contentDescription = strings.showAllTracks,
+                            cornerRadius = 18.dp,
+                            hapticsEnabled = hapticsEnabled,
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("home_reset_filter_button"),
+                        ) {
+                            Text(
+                                text = strings.showAllTracks,
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                color = palette.inkPrimary,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            items(filteredSortedTracks, key = { "home_track_${it.id}" }) { track ->
                 var menuOpen by remember(track.id) { mutableStateOf(false) }
+                val isFavorite = resolvedFavoriteIds.contains(track.id)
                 CompactVinylTrackRow(
                     track = track,
                     isActive = track.id == currentTrack?.id,
                     onClick = {
                         PlinthFeedback.trigger(FeedbackEvent.PLAY_PAUSE)
-                        onPlayTrack(track, favoriteTracks)
+                        onPlayTrack(track, filteredSortedTracks)
                     },
                     trailing = {
-                        Box {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             IconButton(
                                 onClick = {
                                     PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
-                                    menuOpen = true
+                                    onToggleFavorite(track.id)
                                 },
-                                modifier = Modifier.size(44.dp),
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .testTag("home_fav_${track.id}"),
                             ) {
                                 Icon(
-                                    imageVector = Icons.Rounded.MoreVert,
-                                    contentDescription = strings.moreOptions,
-                                    tint = palette.inkSecondary,
+                                    imageVector = if (isFavorite) {
+                                        Icons.Rounded.Favorite
+                                    } else {
+                                        Icons.Outlined.FavoriteBorder
+                                    },
+                                    contentDescription = strings.favorites,
+                                    tint = if (isFavorite) palette.favoriteRed else palette.inkSecondary,
                                     modifier = Modifier.size(20.dp),
                                 )
                             }
-                            DropdownMenu(
-                                expanded = menuOpen,
-                                onDismissRequest = { menuOpen = false },
-                                containerColor = palette.capsuleBg,
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(strings.playNext, color = palette.inkPrimary) },
-                                    leadingIcon = {
-                                        Icon(Icons.AutoMirrored.Rounded.PlaylistPlay, null, tint = palette.inkPrimary)
-                                    },
+                            Box {
+                                IconButton(
                                     onClick = {
-                                        menuOpen = false
-                                        PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
-                                        onPlayNext(track)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(strings.addToQueue, color = palette.inkPrimary) },
-                                    leadingIcon = {
-                                        Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = palette.inkPrimary)
-                                    },
-                                    onClick = {
-                                        menuOpen = false
-                                        PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
-                                        onAddToQueue(track)
-                                    },
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(strings.addToPlaylist, color = palette.inkPrimary) },
-                                    leadingIcon = {
-                                        Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, tint = palette.inkPrimary)
-                                    },
-                                    onClick = {
-                                        menuOpen = false
                                         PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
-                                        onOpenAddToPlaylist(track)
+                                        menuOpen = true
                                     },
-                                )
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("home_more_${track.id}"),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.MoreVert,
+                                        contentDescription = strings.moreOptions,
+                                        tint = palette.inkSecondary,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = menuOpen,
+                                    onDismissRequest = { menuOpen = false },
+                                    containerColor = palette.capsuleBg,
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(strings.playNext, color = palette.inkPrimary) },
+                                        leadingIcon = {
+                                            Icon(Icons.AutoMirrored.Rounded.PlaylistPlay, null, tint = palette.inkPrimary)
+                                        },
+                                        onClick = {
+                                            menuOpen = false
+                                            PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
+                                            onPlayNext(track)
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(strings.addToQueue, color = palette.inkPrimary) },
+                                        leadingIcon = {
+                                            Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = palette.inkPrimary)
+                                        },
+                                        onClick = {
+                                            menuOpen = false
+                                            PlinthFeedback.trigger(FeedbackEvent.CONFIRM)
+                                            onAddToQueue(track)
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(strings.addToPlaylist, color = palette.inkPrimary) },
+                                        leadingIcon = {
+                                            Icon(Icons.AutoMirrored.Rounded.PlaylistAdd, null, tint = palette.inkPrimary)
+                                        },
+                                        onClick = {
+                                            menuOpen = false
+                                            PlinthFeedback.trigger(FeedbackEvent.TAP_SUBTLE)
+                                            onOpenAddToPlaylist(track)
+                                        },
+                                    )
+                                }
                             }
                         }
                     },
-                    modifier = Modifier.padding(horizontal = 20.dp),
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp)
+                        .testTag("home_track_row_${track.id}"),
                 )
             }
         }

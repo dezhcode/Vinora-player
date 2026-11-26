@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -138,6 +139,14 @@ fun PlinthApp(
         importAudioLauncher.launch(arrayOf("audio/*"))
     }
 
+    var requestedStartupScan by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!requestedStartupScan) {
+            requestedStartupScan = true
+            triggerScanDevice()
+        }
+    }
+
     // Fluid spring transition progress between Main Shell (0f) and Full Turntable Now Playing (1f)
     val expandProgress by animateFloatAsState(
         targetValue = if (isNowPlayingOpen) 1f else 0f,
@@ -240,6 +249,13 @@ fun PlinthApp(
                                     onOpenSettings = { showSettingsSheet = true },
                                     onImportAudio = ::triggerImportAudio,
                                     onScanDevice = ::triggerScanDevice,
+                                    favoriteIds = uiState.favoriteIds,
+                                    sortField = uiState.preferences.homeSortField,
+                                    sortAscending = uiState.preferences.homeSortAscending,
+                                    filterType = uiState.preferences.homeFilterType,
+                                    onSortChange = viewModel::setHomeSort,
+                                    onFilterChange = viewModel::setHomeFilter,
+                                    onToggleFavorite = viewModel::toggleFavorite,
                                 )
                             }
 

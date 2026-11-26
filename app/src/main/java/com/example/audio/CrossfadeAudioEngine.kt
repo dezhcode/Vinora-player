@@ -44,7 +44,7 @@ class CrossfadeAudioEngine(
     val sessionListeners = CopyOnWriteArraySet<Player.Listener>()
 
     @Volatile
-    var crossfadeEnabled: Boolean = false
+    var crossfadeEnabled: Boolean = true
         private set
 
     @Volatile

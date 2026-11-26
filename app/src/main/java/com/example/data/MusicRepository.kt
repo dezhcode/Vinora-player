@@ -128,6 +128,8 @@ class MusicRepository(
     suspend fun setShuffleEnabled(enabled: Boolean) = preferences.setShuffleEnabled(enabled)
     suspend fun setRepeatMode(mode: RepeatMode) = preferences.setRepeatMode(mode)
     suspend fun setCrossfadeEnabled(enabled: Boolean) = preferences.setCrossfadeEnabled(enabled)
+    suspend fun setHomeSort(field: HomeSortField, ascending: Boolean) = preferences.setHomeSort(field, ascending)
+    suspend fun setHomeFilter(filter: HomeFilterType) = preferences.setHomeFilter(filter)
     suspend fun saveLastPlayback(trackId: String, positionMs: Long) = preferences.saveLastPlayback(trackId, positionMs)
     suspend fun saveEqualizer(
         enabled: Boolean,
